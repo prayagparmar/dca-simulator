@@ -570,6 +570,22 @@ function renderResults(data, benchmarkTicker) {
         });
     }
 
+    // Add withdrawal cumulative amount if available
+    if (data.withdrawals && data.withdrawals.some(val => val > 0)) {
+        datasets.push({
+            label: 'Total Withdrawn',
+            data: data.withdrawals,
+            borderColor: '#10b981', // Green
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 6,
+            fill: true,
+            tension: 0.4,
+            yAxisID: 'y'
+        });
+    }
+
 
     chartInstance = new Chart(ctx, {
         type: 'line',
@@ -671,6 +687,55 @@ function renderResults(data, benchmarkTicker) {
                 });
                 ctx.restore();
             }
+        },
+        {
+            id: 'withdrawalModeBackground',
+            beforeDraw: (chart) => {
+                if (!data.withdrawal_mode || !data.withdrawal_mode.some(val => val === true)) return;
+
+                const ctx = chart.ctx;
+                const xAxis = chart.scales.x;
+                const yAxis = chart.scales.y;
+
+                // Find first index where withdrawal mode is active
+                const startIndex = data.withdrawal_mode.findIndex(val => val === true);
+                if (startIndex === -1) return;
+
+                const startX = xAxis.getPixelForValue(startIndex);
+                const endX = xAxis.right;
+
+                // Draw green tinted background for withdrawal period
+                ctx.save();
+                ctx.fillStyle = 'rgba(16, 185, 129, 0.05)'; // Light green tint
+                ctx.fillRect(startX, yAxis.top, endX - startX, yAxis.bottom - yAxis.top);
+                ctx.restore();
+            }
+        },
+        {
+            id: 'withdrawalMarkers',
+            afterDraw: (chart) => {
+                if (!data.withdrawal_dates || data.withdrawal_dates.length === 0) return;
+
+                const ctx = chart.ctx;
+                const xAxis = chart.scales.x;
+                const yAxis = chart.scales.y;
+
+                ctx.save();
+                data.withdrawal_dates.forEach(date => {
+                    const dateIndex = data.dates.indexOf(date);
+                    if (dateIndex === -1) return;
+
+                    const x = xAxis.getPixelForValue(dateIndex);
+                    const topY = yAxis.top;
+
+                    // Draw small green dot at top
+                    ctx.fillStyle = '#10b981';
+                    ctx.beginPath();
+                    ctx.arc(x, topY + 25, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.restore();
+            }
         }]
     });
 
@@ -737,5 +802,67 @@ function renderResults(data, benchmarkTicker) {
     } else {
         // Hide the table if no margin calls
         marginCallTableContainer.style.display = 'none';
+    }
+
+    // ==== POPULATE WITHDRAWAL SECTION ====
+    const withdrawalSection = document.getElementById('withdrawal-section');
+    const summary = data.summary;
+
+    if (summary && summary.total_withdrawn > 0) {
+        // Show withdrawal section
+        withdrawalSection.style.display = 'block';
+
+        // Populate summary cards
+        document.getElementById('total-withdrawn').textContent =
+            '$' + summary.total_withdrawn.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+        document.getElementById('withdrawal-start-date').textContent =
+            summary.withdrawal_mode_start_date || 'N/A';
+
+        document.getElementById('withdrawal-count').textContent =
+            (data.withdrawal_dates ? data.withdrawal_dates.length : 0).toString();
+
+        const status = summary.withdrawal_mode_active ?
+            '<span style="color: #10b981;">Active</span>' :
+            '<span style="color: #94a3b8;">Completed</span>';
+        document.getElementById('withdrawal-status').innerHTML = status;
+    } else {
+        withdrawalSection.style.display = 'none';
+    }
+
+    // ==== POPULATE WITHDRAWAL TABLE ====
+    const withdrawalTableContainer = document.getElementById('withdrawal-table-container');
+    const withdrawalTableBody = document.getElementById('withdrawal-table-body');
+
+    if (data.withdrawal_details && data.withdrawal_details.length > 0) {
+        withdrawalTableBody.innerHTML = '';
+
+        data.withdrawal_details.forEach((withdrawal) => {
+            const row = document.createElement('tr');
+
+            const formatCurrency = (value) => {
+                return '$' + value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            };
+
+            const formatNumber = (value) => {
+                return value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            };
+
+            row.innerHTML = `
+                <td><strong>${withdrawal.date}</strong></td>
+                <td>${formatCurrency(withdrawal.price)}</td>
+                <td>${formatNumber(withdrawal.shares_sold)}</td>
+                <td>${formatCurrency(withdrawal.sale_proceeds)}</td>
+                <td>${formatCurrency(withdrawal.debt_repaid)}</td>
+                <td class="withdrawal-amount">${formatCurrency(withdrawal.amount_withdrawn)}</td>
+                <td><strong>${formatCurrency(withdrawal.cumulative_withdrawn)}</strong></td>
+            `;
+
+            withdrawalTableBody.appendChild(row);
+        });
+
+        withdrawalTableContainer.style.display = 'block';
+    } else {
+        withdrawalTableContainer.style.display = 'none';
     }
 }
