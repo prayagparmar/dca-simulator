@@ -84,6 +84,8 @@ function setupNumberFormatting(inputId) {
 setupNumberFormatting('initial-amount');
 setupNumberFormatting('account-balance');
 setupNumberFormatting('amount');
+setupNumberFormatting('withdrawal-threshold');
+setupNumberFormatting('monthly-withdrawal');
 
 document.getElementById('calculate-btn').addEventListener('click', async () => {
     const ticker = document.getElementById('ticker').value;
@@ -102,6 +104,8 @@ document.getElementById('calculate-btn').addEventListener('click', async () => {
     const accountBalance = document.getElementById('account-balance').value;
     const marginRatio = document.getElementById('margin-ratio').value;
     const maintenanceMargin = document.getElementById('maintenance-margin').value;
+    const withdrawalThreshold = document.getElementById('withdrawal-threshold').value;
+    const monthlyWithdrawal = document.getElementById('monthly-withdrawal').value;
 
     const calculateBtn = document.getElementById('calculate-btn');
     calculateBtn.disabled = true;
@@ -123,7 +127,9 @@ document.getElementById('calculate-btn').addEventListener('click', async () => {
                 benchmark_ticker: benchmarkTicker,
                 account_balance: accountBalance.replace(/,/g, ''),
                 margin_ratio: marginRatio,
-                maintenance_margin: parseFloat(maintenanceMargin) / 100
+                maintenance_margin: parseFloat(maintenanceMargin) / 100,
+                withdrawal_threshold: withdrawalThreshold.replace(/,/g, ''),
+                monthly_withdrawal_amount: monthlyWithdrawal.replace(/,/g, '')
             })
         });
 
