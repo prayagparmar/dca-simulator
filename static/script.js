@@ -106,6 +106,7 @@ document.getElementById('calculate-btn').addEventListener('click', async () => {
     const maintenanceMargin = document.getElementById('maintenance-margin').value;
     const withdrawalThreshold = document.getElementById('withdrawal-threshold').value;
     const monthlyWithdrawal = document.getElementById('monthly-withdrawal').value;
+    const frequency = document.getElementById('frequency').value || 'DAILY';
 
     const calculateBtn = document.getElementById('calculate-btn');
     calculateBtn.disabled = true;
@@ -129,7 +130,8 @@ document.getElementById('calculate-btn').addEventListener('click', async () => {
                 margin_ratio: marginRatio,
                 maintenance_margin: parseFloat(maintenanceMargin) / 100,
                 withdrawal_threshold: withdrawalThreshold.replace(/,/g, ''),
-                monthly_withdrawal_amount: monthlyWithdrawal.replace(/,/g, '')
+                monthly_withdrawal_amount: monthlyWithdrawal.replace(/,/g, ''),
+                frequency: frequency
             })
         });
 

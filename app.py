@@ -1219,12 +1219,54 @@ def execute_monthly_withdrawal(withdrawal_amount, total_shares, price, borrowed_
 # END DOMAIN LOGIC FUNCTIONS
 # ==============================================================================
 
+
+def should_invest_today(date_str, start_date_str, frequency, last_investment_month):
+    """
+    Determine if investment should occur today based on frequency setting.
+
+    Args:
+        date_str: Current date as string 'YYYY-MM-DD'
+        start_date_str: Start date as string 'YYYY-MM-DD'
+        frequency: 'DAILY', 'WEEKLY', or 'MONTHLY'
+        last_investment_month: Last month invested (format 'YYYY-MM') or None
+
+    Returns:
+        tuple: (should_invest: bool, updated_last_month: str or None)
+    """
+    if frequency == 'DAILY':
+        return True, last_investment_month
+
+    try:
+        current_date = pd.to_datetime(date_str)
+    except (ValueError, pd.errors.OutOfBoundsDatetime):
+        # Fallback to daily for invalid dates
+        return True, last_investment_month
+
+    if frequency == 'WEEKLY':
+        try:
+            start_date = pd.to_datetime(start_date_str)
+            should_invest = current_date.dayofweek == start_date.dayofweek
+            return should_invest, last_investment_month
+        except (ValueError, pd.errors.OutOfBoundsDatetime):
+            # Fallback to daily for invalid dates
+            return True, last_investment_month
+
+    if frequency == 'MONTHLY':
+        current_month = current_date.strftime('%Y-%m')
+        if current_month != last_investment_month:
+            return True, current_month
+        return False, last_investment_month
+
+    # Default to daily for unknown frequencies
+    return True, last_investment_month
+
+
 @app.route('/')
 def index():
     return render_template('index.html')
 
 
-def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, reinvest, target_dates=None, account_balance=None, margin_ratio=NO_MARGIN_RATIO, maintenance_margin=DEFAULT_MAINTENANCE_MARGIN, withdrawal_threshold=None, monthly_withdrawal_amount=None):
+def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, reinvest, target_dates=None, account_balance=None, margin_ratio=NO_MARGIN_RATIO, maintenance_margin=DEFAULT_MAINTENANCE_MARGIN, withdrawal_threshold=None, monthly_withdrawal_amount=None, frequency='DAILY'):
     # Fetch historical price data
     hist = fetch_stock_data(ticker, start_date, end_date)
     if hist is None:
@@ -1278,6 +1320,9 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
     withdrawal_dates = []
     withdrawal_details = []
     last_withdrawal_month = None
+
+    # Investment frequency tracking
+    last_investment_month = None  # Track monthly investments
 
     # Insolvency tracking variables (matches Robinhood behavior)
     insolvency_detected = False
@@ -1540,7 +1585,15 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
         # ==== STEP 7: Execute Daily Purchase ====
         # Skip daily investments when withdrawal mode is active (decumulation phase)
         if not withdrawal_mode_active:
-            daily_investment = amount
+            # Check if we should invest today based on frequency
+            should_invest, last_investment_month = should_invest_today(
+                date, start_date, frequency, last_investment_month
+            )
+
+            daily_investment = 0
+            if should_invest or first_day:
+                daily_investment = amount
+
             if first_day:
                 daily_investment += initial_amount
                 first_day = False
@@ -1748,6 +1801,9 @@ def calculate():
     monthly_withdrawal_str = data.get('monthly_withdrawal_amount')
     monthly_withdrawal_amount = float(monthly_withdrawal_str) if monthly_withdrawal_str and monthly_withdrawal_str != '' else None
 
+    # Get frequency parameter (default to DAILY for backward compatibility)
+    frequency = data.get('frequency', 'DAILY')
+
     if not ticker or not start_date or not amount:
         return jsonify({'error': 'Missing required fields'}), 400
 
@@ -1774,6 +1830,11 @@ def calculate():
     if monthly_withdrawal_amount is not None and monthly_withdrawal_amount < 0:
         return jsonify({'error': 'Monthly withdrawal amount must be non-negative'}), 400
 
+    # Validate frequency parameter
+    valid_frequencies = ['DAILY', 'WEEKLY', 'MONTHLY']
+    if frequency not in valid_frequencies:
+        return jsonify({'error': f'Invalid frequency. Must be one of: {", ".join(valid_frequencies)}'}), 400
+
     # If benchmark specified, find common date range to avoid synthetic data
     actual_start_date = start_date
     actual_end_date = end_date
@@ -1786,7 +1847,7 @@ def calculate():
         else:
             return jsonify({'error': 'No common date range between portfolio and benchmark tickers'}), 404
 
-    result = calculate_dca_core(ticker, actual_start_date, actual_end_date, amount, initial_amount, reinvest, account_balance=account_balance, margin_ratio=margin_ratio, maintenance_margin=maintenance_margin, withdrawal_threshold=withdrawal_threshold, monthly_withdrawal_amount=monthly_withdrawal_amount)
+    result = calculate_dca_core(ticker, actual_start_date, actual_end_date, amount, initial_amount, reinvest, account_balance=account_balance, margin_ratio=margin_ratio, maintenance_margin=maintenance_margin, withdrawal_threshold=withdrawal_threshold, monthly_withdrawal_amount=monthly_withdrawal_amount, frequency=frequency)
 
     if not result:
         return jsonify({'error': 'No data found for this ticker and date range'}), 404
@@ -1794,8 +1855,9 @@ def calculate():
     if benchmark_ticker:
         # Use same date range as portfolio (already determined to be common range)
         # Benchmark always uses NO MARGIN (ratio=1.0) for apples-to-apples comparison
-        # This isolates ticker performance from leverage effects
-        benchmark_result = calculate_dca_core(benchmark_ticker, actual_start_date, actual_end_date, amount, initial_amount, reinvest, target_dates=result['dates'], account_balance=account_balance, margin_ratio=NO_MARGIN_RATIO, maintenance_margin=DEFAULT_MAINTENANCE_MARGIN)
+        # Benchmark always uses DAILY frequency to isolate ticker performance from frequency effects
+        # This ensures fair comparison regardless of user's chosen investment frequency
+        benchmark_result = calculate_dca_core(benchmark_ticker, actual_start_date, actual_end_date, amount, initial_amount, reinvest, target_dates=result['dates'], account_balance=account_balance, margin_ratio=NO_MARGIN_RATIO, maintenance_margin=DEFAULT_MAINTENANCE_MARGIN, frequency='DAILY')
         if benchmark_result:
             result['benchmark'] = benchmark_result['portfolio']
             result['benchmark_summary'] = benchmark_result['summary']

@@ -43,9 +43,19 @@
                         <input type="text" id="account-balance" placeholder="Optional (e.g. 5,000)" value="150,000"
                             inputmode="numeric">
                     </div>
-                    <div class="input-group">
-                        <label for="amount">Daily Amount ($)</label>
-                        <input type="text" id="amount" placeholder="e.g. 100" value="500" inputmode="numeric">
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label for="amount">Recurring Amount ($)</label>
+                            <input type="text" id="amount" placeholder="e.g. 100" value="500" inputmode="numeric">
+                        </div>
+                        <div class="input-group">
+                            <label for="frequency">Investment Frequency</label>
+                            <select id="frequency">
+                                <option value="DAILY" selected>Daily</option>
+                                <option value="WEEKLY">Weekly (Same Weekday)</option>
+                                <option value="MONTHLY">Monthly (First Trading Day)</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="input-group relative">
                         <label for="benchmark">Benchmark Ticker (Optional)</label>
