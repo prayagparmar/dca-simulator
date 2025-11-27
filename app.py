@@ -210,6 +210,52 @@ def calculate_target_portfolio_for_margin_call(borrowed_amount, cash_balance, ma
     return (borrowed_amount - safe_cash) / (1 - maintenance_margin)
 
 
+def calculate_shares_to_sell_for_withdrawal(withdrawal_amount, margin_debt, cash_balance, current_price):
+    """
+    Calculate shares to sell with margin debt priority.
+
+    Logic:
+    1. Repay ALL margin debt first
+    2. Then satisfy withdrawal amount
+    3. Return shares needed to achieve this
+
+    Args:
+        withdrawal_amount: Requested withdrawal amount
+        margin_debt: Current margin debt
+        cash_balance: Current cash balance
+        current_price: Current share price
+
+    Returns:
+        shares_to_sell: Number of shares to sell
+        debt_repayment: Amount going to debt repayment
+        withdrawal: Amount actually withdrawn
+    """
+    # Total cash needed: repay debt + withdrawal amount
+    total_needed = margin_debt + withdrawal_amount
+
+    # Cash already available
+    available_cash = max(0, cash_balance)
+
+    # Additional cash needed from selling shares
+    cash_from_sales_needed = max(0, total_needed - available_cash)
+
+    # Shares to sell
+    shares_to_sell = cash_from_sales_needed / current_price if current_price > 0 else 0
+
+    # Calculate actual amounts
+    sale_proceeds = shares_to_sell * current_price
+    total_cash = available_cash + sale_proceeds
+
+    # Priority 1: Repay debt
+    debt_repayment = min(total_cash, margin_debt)
+
+    # Priority 2: Withdraw
+    remaining_cash = total_cash - debt_repayment
+    actual_withdrawal = min(remaining_cash, withdrawal_amount)
+
+    return shares_to_sell, debt_repayment, actual_withdrawal
+
+
 # ==============================================================================
 # END PURE CALCULATION FUNCTIONS
 # ==============================================================================
@@ -1104,6 +1150,66 @@ def execute_margin_call(total_shares, price, borrowed_amount, current_balance, m
         return new_shares, new_balance, new_borrowed_amount, True
 
 
+def execute_monthly_withdrawal(withdrawal_amount, total_shares, price, borrowed_amount, current_balance, total_cost_basis):
+    """
+    Execute monthly withdrawal with margin-aware logic.
+
+    Priority:
+    1. Repay ALL margin debt
+    2. Withdraw requested amount
+    3. Keep remainder in cash
+
+    Args:
+        withdrawal_amount: Requested monthly withdrawal
+        total_shares: Current shares owned
+        price: Current share price
+        borrowed_amount: Current margin debt
+        current_balance: Current cash balance
+        total_cost_basis: Current total cost basis
+
+    Returns:
+        new_shares: Shares remaining after sale
+        new_balance: Cash balance after withdrawal
+        new_borrowed_amount: Debt remaining
+        new_cost_basis: Updated cost basis
+        shares_sold: Number of shares sold
+        debt_repaid: Amount of debt repaid
+        amount_withdrawn: Actual amount withdrawn
+    """
+    # Calculate shares to sell
+    shares_to_sell, debt_repayment, actual_withdrawal = calculate_shares_to_sell_for_withdrawal(
+        withdrawal_amount, borrowed_amount, current_balance, price
+    )
+
+    # Execute sale
+    shares_sold = min(shares_to_sell, total_shares)  # Can't sell more than owned
+    sale_proceeds = shares_sold * price
+
+    # Update cost basis proportionally
+    if total_shares > 0:
+        cost_basis_reduction = total_cost_basis * (shares_sold / total_shares)
+        new_cost_basis = total_cost_basis - cost_basis_reduction
+    else:
+        new_cost_basis = total_cost_basis
+
+    # Update shares
+    new_shares = total_shares - shares_sold
+
+    # Update cash: add sale proceeds
+    new_balance = current_balance + sale_proceeds
+
+    # Priority 1: Repay debt
+    actual_debt_repayment = min(new_balance, borrowed_amount)
+    new_borrowed_amount = borrowed_amount - actual_debt_repayment
+    new_balance = new_balance - actual_debt_repayment
+
+    # Priority 2: Withdraw
+    actual_withdrawal = min(new_balance, withdrawal_amount)
+    new_balance = new_balance - actual_withdrawal
+
+    return new_shares, new_balance, new_borrowed_amount, new_cost_basis, shares_sold, actual_debt_repayment, actual_withdrawal
+
+
 # ==============================================================================
 # END DOMAIN LOGIC FUNCTIONS
 # ==============================================================================
@@ -1113,7 +1219,7 @@ def index():
     return render_template('index.html')
 
 
-def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, reinvest, target_dates=None, account_balance=None, margin_ratio=NO_MARGIN_RATIO, maintenance_margin=DEFAULT_MAINTENANCE_MARGIN):
+def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, reinvest, target_dates=None, account_balance=None, margin_ratio=NO_MARGIN_RATIO, maintenance_margin=DEFAULT_MAINTENANCE_MARGIN, withdrawal_threshold=None, monthly_withdrawal_amount=None):
     # Fetch historical price data
     hist = fetch_stock_data(ticker, start_date, end_date)
     if hist is None:
@@ -1160,6 +1266,14 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
     margin_call_details = []  # Track detailed information for each margin call
     last_interest_month = None  # Track when we last charged interest
 
+    # Withdrawal tracking variables
+    withdrawal_mode_active = False
+    withdrawal_mode_start_date = None
+    total_withdrawn = 0.0
+    withdrawal_dates = []
+    withdrawal_details = []
+    last_withdrawal_month = None
+
     # Insolvency tracking variables (matches Robinhood behavior)
     insolvency_detected = False
     insolvency_date = None
@@ -1177,6 +1291,8 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
     net_portfolio_values = []
     leverage_values = []  # Track leverage ratio over time
     average_cost_values = [] # Track average cost per share
+    withdrawal_mode_values = []  # Track withdrawal mode status (boolean)
+    withdrawal_amount_values = []  # Track cumulative withdrawn amount
 
     first_day = True
 
@@ -1185,12 +1301,17 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
         DAILY ORDER OF OPERATIONS (executed each trading day):
         1. Check margin requirements - FIRST! Force liquidation if equity < maintenance margin
         2. Check insolvency - STOP simulation if equity ≤ $0 (matches Robinhood behavior)
-        3. Process dividends - paid on shares held overnight (only if still solvent)
-        4. Charge interest - monthly on first trading day of new month
-        5. Execute daily purchase - buy shares with cash and/or margin
+        3. Check withdrawal threshold - activate withdrawal mode if net value >= threshold
+        4. Execute monthly withdrawal - withdraw fixed amount, prioritize debt repayment
+        5. Process dividends - paid on shares held overnight (disabled during withdrawal mode)
+        6. Charge interest - monthly on first trading day of new month
+        7. Execute daily purchase - buy shares with cash and/or margin
 
-        CRITICAL: Margin call BEFORE dividends prevents "dividend resurrection" bug.
-        Insolvency check prevents "zombie portfolio" bug where simulation continues after account death.
+        CRITICAL:
+        - Margin call BEFORE dividends prevents "dividend resurrection" bug
+        - Insolvency check prevents "zombie portfolio" bug
+        - Withdrawal BEFORE dividends to properly disable reinvestment
+        - Dividend reinvestment stops during withdrawal mode (cash goes to fund withdrawals)
         """
         # Normalize date to string format for consistency
         date_str = date if isinstance(date, str) else date.strftime('%Y-%m-%d')
@@ -1289,20 +1410,71 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
             avg_cost = total_cost_basis / total_shares if total_shares > 0 else 0
             average_cost_values.append(avg_cost)
 
+            # Add withdrawal tracking (even though withdrawing stopped due to insolvency)
+            withdrawal_mode_values.append(withdrawal_mode_active)
+            withdrawal_amount_values.append(total_withdrawn)
+
             break  # EXIT LOOP - Simulation terminates
 
-        # ==== STEP 3: Process Dividends ====
+        # ==== STEP 3: Check Withdrawal Threshold ====
+        # Check if net portfolio value has reached withdrawal threshold
+        # Once activated, withdrawal mode never deactivates (one-way state)
+        if not withdrawal_mode_active and withdrawal_threshold is not None:
+            current_net_value = (total_shares * price) + (current_balance if current_balance else 0) - borrowed_amount
+            if current_net_value >= withdrawal_threshold:
+                withdrawal_mode_active = True
+                withdrawal_mode_start_date = date_str
+
+        # ==== STEP 4: Execute Monthly Withdrawal ====
+        # Process withdrawals monthly (on first trading day of each new month)
+        if withdrawal_mode_active and monthly_withdrawal_amount is not None and monthly_withdrawal_amount > 0:
+            try:
+                current_date = pd.to_datetime(date_str)
+                current_month = current_date.strftime('%Y-%m')
+            except Exception as e:
+                raise e
+
+            # Execute withdrawal on first day of new month
+            if current_month != last_withdrawal_month:
+                # Execute withdrawal
+                (total_shares, current_balance, borrowed_amount, total_cost_basis,
+                 shares_sold, debt_repaid, amount_withdrawn) = execute_monthly_withdrawal(
+                    monthly_withdrawal_amount, total_shares, price, borrowed_amount,
+                    current_balance, total_cost_basis
+                )
+
+                # Track withdrawal details
+                if amount_withdrawn > 0 or shares_sold > 0:
+                    total_withdrawn += amount_withdrawn
+                    withdrawal_dates.append(date_str)
+                    withdrawal_details.append({
+                        'date': date_str,
+                        'price': price,
+                        'shares_sold': shares_sold,
+                        'sale_proceeds': shares_sold * price,
+                        'debt_repaid': debt_repaid,
+                        'amount_withdrawn': amount_withdrawn,
+                        'cumulative_withdrawn': total_withdrawn
+                    })
+
+                last_withdrawal_month = current_month
+
+        # ==== STEP 5: Process Dividends ====
         # Only process if account is still solvent
+        # IMPORTANT: Disable dividend reinvestment during withdrawal mode
+        # (dividends go to cash to help fund withdrawals)
+        effective_reinvest = reinvest and (not withdrawal_mode_active)
+
         # Check for dividends on this day
         day_dividend = dividends.get(date_str)
         if day_dividend:
             shares_added, total_cost_basis, current_balance, dividend_income = process_dividend(
-                total_shares, day_dividend, price, reinvest, current_balance, total_cost_basis
+                total_shares, day_dividend, price, effective_reinvest, current_balance, total_cost_basis
             )
             total_shares += shares_added
             cumulative_dividends += dividend_income
 
-        # ==== STEP 4: Charge Interest ====
+        # ==== STEP 6: Charge Interest ====
         # Monthly interest charge (on the first day of each month)
         try:
             current_date = pd.to_datetime(date_str)
@@ -1332,7 +1504,7 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
             total_interest_paid += interest_charge
             last_interest_month = current_month
 
-        # ==== STEP 5: Execute Daily Purchase ====
+        # ==== STEP 7: Execute Daily Purchase ====
         daily_investment = amount
         if first_day:
             daily_investment += initial_amount
@@ -1394,7 +1566,11 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
         avg_cost = total_cost_basis / total_shares if total_shares > 0 else 0
         average_cost_values.append(avg_cost)
 
-        
+        # Track withdrawal mode and cumulative withdrawn amount
+        withdrawal_mode_values.append(withdrawal_mode_active)
+        withdrawal_amount_values.append(total_withdrawn)
+
+
     current_price = hist.iloc[-1]['Close']
     current_portfolio_value = total_shares * current_price
     
@@ -1448,6 +1624,10 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
         'average_cost': [round(v, 2) for v in average_cost_values],
         'margin_call_dates': margin_call_dates,
         'margin_call_details': margin_call_details,
+        'withdrawal_mode': withdrawal_mode_values,
+        'withdrawals': [round(v, 2) for v in withdrawal_amount_values],
+        'withdrawal_dates': withdrawal_dates,
+        'withdrawal_details': withdrawal_details,
         'actual_start_date': dates[0] if dates else None,
         'summary': {
             'total_invested': round(total_invested, 2),
@@ -1469,7 +1649,11 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
             'insolvency_date': insolvency_date,
             'min_equity_value': round(min_equity, 2) if min_equity != float('inf') else None,
             'min_equity_date': min_equity_date,
-            'actual_max_drawdown': round((min_equity - peak_equity) / peak_equity, 4) if peak_equity > 0 else 0
+            'actual_max_drawdown': round((min_equity - peak_equity) / peak_equity, 4) if peak_equity > 0 else 0,
+            # Withdrawal tracking
+            'total_withdrawn': round(total_withdrawn, 2),
+            'withdrawal_mode_active': withdrawal_mode_active,
+            'withdrawal_mode_start_date': withdrawal_mode_start_date
         },
         'analytics': {
             # Performance metrics
@@ -1518,6 +1702,13 @@ def calculate():
     margin_ratio = float(data.get('margin_ratio', 1.0))
     maintenance_margin = float(data.get('maintenance_margin', DEFAULT_MAINTENANCE_MARGIN))
 
+    # Get withdrawal parameters
+    withdrawal_threshold_str = data.get('withdrawal_threshold')
+    withdrawal_threshold = float(withdrawal_threshold_str) if withdrawal_threshold_str and withdrawal_threshold_str != '' else None
+
+    monthly_withdrawal_str = data.get('monthly_withdrawal_amount')
+    monthly_withdrawal_amount = float(monthly_withdrawal_str) if monthly_withdrawal_str and monthly_withdrawal_str != '' else None
+
     if not ticker or not start_date or not amount:
         return jsonify({'error': 'Missing required fields'}), 400
 
@@ -1537,6 +1728,13 @@ def calculate():
     if account_balance is not None and account_balance < 0:
         return jsonify({'error': 'Account balance must be non-negative'}), 400
 
+    # Validate withdrawal parameters
+    if withdrawal_threshold is not None and withdrawal_threshold < 0:
+        return jsonify({'error': 'Withdrawal threshold must be non-negative'}), 400
+
+    if monthly_withdrawal_amount is not None and monthly_withdrawal_amount < 0:
+        return jsonify({'error': 'Monthly withdrawal amount must be non-negative'}), 400
+
     # If benchmark specified, find common date range to avoid synthetic data
     actual_start_date = start_date
     actual_end_date = end_date
@@ -1549,7 +1747,7 @@ def calculate():
         else:
             return jsonify({'error': 'No common date range between portfolio and benchmark tickers'}), 404
 
-    result = calculate_dca_core(ticker, actual_start_date, actual_end_date, amount, initial_amount, reinvest, account_balance=account_balance, margin_ratio=margin_ratio, maintenance_margin=maintenance_margin)
+    result = calculate_dca_core(ticker, actual_start_date, actual_end_date, amount, initial_amount, reinvest, account_balance=account_balance, margin_ratio=margin_ratio, maintenance_margin=maintenance_margin, withdrawal_threshold=withdrawal_threshold, monthly_withdrawal_amount=monthly_withdrawal_amount)
 
     if not result:
         return jsonify({'error': 'No data found for this ticker and date range'}), 404
