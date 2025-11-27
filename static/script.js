@@ -806,7 +806,6 @@ function renderResults(data, benchmarkTicker) {
 
     // ==== POPULATE WITHDRAWAL SECTION ====
     const withdrawalSection = document.getElementById('withdrawal-section');
-    const summary = data.summary;
 
     if (summary && summary.total_withdrawn > 0) {
         // Show withdrawal section
@@ -848,15 +847,34 @@ function renderResults(data, benchmarkTicker) {
                 return value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
             };
 
-            row.innerHTML = `
-                <td><strong>${withdrawal.date}</strong></td>
-                <td>${formatCurrency(withdrawal.price)}</td>
-                <td>${formatNumber(withdrawal.shares_sold)}</td>
-                <td>${formatCurrency(withdrawal.sale_proceeds)}</td>
-                <td>${formatCurrency(withdrawal.debt_repaid)}</td>
-                <td class="withdrawal-amount">${formatCurrency(withdrawal.amount_withdrawn)}</td>
-                <td><strong>${formatCurrency(withdrawal.cumulative_withdrawn)}</strong></td>
-            `;
+            // Check if this is the special debt payoff event
+            const isDebtPayoff = withdrawal.event_type === 'threshold_debt_payoff';
+
+            if (isDebtPayoff) {
+                // Highlight debt payoff row
+                row.style.backgroundColor = 'rgba(251, 146, 60, 0.15)'; // Orange tint
+                row.style.borderLeft = '4px solid #fb923c'; // Orange border
+                row.innerHTML = `
+                    <td><strong>${withdrawal.date}</strong><br><span style="color: #fb923c; font-size: 0.85em;">⚡ Threshold Reached - Debt Payoff</span></td>
+                    <td>${formatCurrency(withdrawal.price)}</td>
+                    <td>${formatNumber(withdrawal.shares_sold)}</td>
+                    <td>${formatCurrency(withdrawal.sale_proceeds)}</td>
+                    <td style="color: #fb923c;"><strong>${formatCurrency(withdrawal.debt_repaid)}</strong></td>
+                    <td class="withdrawal-amount">$0.00</td>
+                    <td><strong>${formatCurrency(withdrawal.cumulative_withdrawn)}</strong></td>
+                `;
+            } else {
+                // Regular withdrawal row
+                row.innerHTML = `
+                    <td><strong>${withdrawal.date}</strong></td>
+                    <td>${formatCurrency(withdrawal.price)}</td>
+                    <td>${formatNumber(withdrawal.shares_sold)}</td>
+                    <td>${formatCurrency(withdrawal.sale_proceeds)}</td>
+                    <td>${formatCurrency(withdrawal.debt_repaid)}</td>
+                    <td class="withdrawal-amount">${formatCurrency(withdrawal.amount_withdrawn)}</td>
+                    <td><strong>${formatCurrency(withdrawal.cumulative_withdrawn)}</strong></td>
+                `;
+            }
 
             withdrawalTableBody.appendChild(row);
         });

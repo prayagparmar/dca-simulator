@@ -269,37 +269,40 @@ class TestWithdrawalIntegration(unittest.TestCase):
     @patch('app.yf.Ticker')
     @patch('app.fetch_stock_data')
     def test_force_sell_shares_when_cash_insufficient(self, mock_fetch, mock_ticker):
-        """Test that shares are force-sold when cash is insufficient."""
+        """Test that shares are force-sold when cash is insufficient for withdrawal."""
         # Setup: stable price
-        mock_data = create_mock_stock_data(days=120, start_price=100, volatility=0.005)
+        mock_data = create_mock_stock_data(days=180, start_price=100, volatility=0.005)
         mock_fetch.return_value = mock_data
 
         mock_ticker_instance = Mock()
         mock_ticker_instance.dividends = pd.Series()
         mock_ticker.return_value = mock_ticker_instance
 
+        # NEW BEHAVIOR: Daily investments stop during withdrawal mode
+        # Strategy: Accumulate normally, then trigger withdrawal with depleted cash
         result = calculate_dca_core(
             ticker='TEST',
             start_date='2024-01-01',
-            end_date='2024-04-30',
-            amount=500,  # Small daily amount
-            initial_amount=100000,  # Large initial to trigger quickly
+            end_date='2024-06-30',
+            amount=2000,  # Daily amount during accumulation
+            initial_amount=50000,  # Moderate initial
             reinvest=False,
-            account_balance=105000,  # Constrained cash
-            withdrawal_threshold=50000,
-            monthly_withdrawal_amount=10000  # Large withdrawal
+            account_balance=52000,  # Just enough for 1 day of investing
+            withdrawal_threshold=200000,  # High threshold - trigger after accumulation
+            monthly_withdrawal_amount=50000  # Very large withdrawal to force share sales
         )
 
         self.assertIsNotNone(result)
 
-        # Check if shares were sold
-        if len(result['withdrawal_details']) > 0:
-            shares_sold_count = sum(1 for d in result['withdrawal_details'] if d['shares_sold'] > 0)
-            # At least some withdrawals should require selling shares
-            if result['summary']['total_withdrawn'] > 0:
-                # Verify shares were sold in at least one withdrawal
-                total_shares_sold = sum(d['shares_sold'] for d in result['withdrawal_details'])
-                self.assertGreater(total_shares_sold, 0)
+        # With new behavior: no daily investments during withdrawal mode
+        # Cash depletes during accumulation, then withdrawals require selling shares
+        if len(result['withdrawal_details']) > 0 and result['summary']['total_withdrawn'] > 0:
+            # Check if ANY withdrawal sold shares
+            total_shares_sold = sum(d['shares_sold'] for d in result['withdrawal_details'])
+
+            # With depleted cash and large withdrawals, shares MUST be sold
+            self.assertGreater(total_shares_sold, 0,
+                             "Should sell shares when cash insufficient for withdrawal")
 
     @patch('app.yf.Ticker')
     @patch('app.fetch_stock_data')
@@ -368,6 +371,167 @@ class TestWithdrawalIntegration(unittest.TestCase):
         self.assertEqual(result['summary']['total_withdrawn'], 0)
         self.assertEqual(result['summary']['withdrawal_mode_active'], False)
         self.assertEqual(len(result['withdrawal_dates']), 0)
+
+    @patch('app.yf.Ticker')
+    @patch('app.fetch_stock_data')
+    def test_daily_investments_stop_during_withdrawal_mode(self, mock_fetch, mock_ticker):
+        """Test that daily investments stop once withdrawal mode activates."""
+        # Setup: 6 months of stable prices
+        mock_data = create_mock_stock_data(days=180, start_price=100, volatility=0.001, trend=0.0)
+        mock_fetch.return_value = mock_data
+
+        mock_ticker_instance = Mock()
+        mock_ticker_instance.dividends = pd.Series()
+        mock_ticker.return_value = mock_ticker_instance
+
+        result = calculate_dca_core(
+            ticker='TEST',
+            start_date='2024-01-01',
+            end_date='2024-06-30',
+            amount=500,  # $500 daily
+            initial_amount=100000,  # Large initial to trigger threshold quickly
+            reinvest=False,
+            withdrawal_threshold=50000,  # Low threshold to trigger early
+            monthly_withdrawal_amount=3000
+        )
+
+        self.assertIsNotNone(result)
+
+        # Should have triggered withdrawal mode
+        self.assertTrue(result['summary']['withdrawal_mode_active'])
+        self.assertGreater(result['summary']['total_withdrawn'], 0)
+
+        # Find when withdrawal mode started
+        withdrawal_start_idx = next(
+            (i for i, active in enumerate(result['withdrawal_mode']) if active),
+            None
+        )
+        self.assertIsNotNone(withdrawal_start_idx)
+
+        # Check total_invested array
+        # Before withdrawal mode: total_invested should increase daily
+        # During withdrawal mode: total_invested should NOT increase (flat line)
+        if withdrawal_start_idx > 10 and withdrawal_start_idx < len(result['invested']) - 10:
+            # Check that investments increased before withdrawal mode
+            invested_before_start = result['invested'][withdrawal_start_idx - 1]
+            invested_10_days_before = result['invested'][max(0, withdrawal_start_idx - 10)]
+            self.assertGreater(invested_before_start, invested_10_days_before,
+                             "Investments should increase before withdrawal mode")
+
+            # Check that investments STOPPED during withdrawal mode
+            invested_at_start = result['invested'][withdrawal_start_idx]
+            invested_10_days_after = result['invested'][min(len(result['invested']) - 1, withdrawal_start_idx + 10)]
+            invested_at_end = result['invested'][-1]
+
+            # Total invested should be flat (same value) after withdrawal mode starts
+            self.assertEqual(invested_at_start, invested_10_days_after,
+                           "Investments should stop (flat line) during withdrawal mode")
+            self.assertEqual(invested_at_start, invested_at_end,
+                           "Total invested should remain constant throughout withdrawal mode")
+
+    @patch('app.yf.Ticker')
+    @patch('app.fetch_stock_data')
+    def test_debt_paid_off_immediately_at_threshold(self, mock_fetch, mock_ticker):
+        """Test that ALL debt is paid off immediately when threshold is reached."""
+        # Setup: Accumulate with margin, then trigger threshold
+        mock_data = create_mock_stock_data(days=180, start_price=100, trend=0.002)
+        mock_fetch.return_value = mock_data
+
+        mock_ticker_instance = Mock()
+        mock_ticker_instance.dividends = pd.Series()
+        mock_ticker.return_value = mock_ticker_instance
+
+        result = calculate_dca_core(
+            ticker='TEST',
+            start_date='2024-01-01',
+            end_date='2024-06-30',
+            amount=1000,  # Daily amount
+            initial_amount=50000,
+            reinvest=False,
+            account_balance=55000,  # Constrained - will use margin
+            margin_ratio=2.0,  # Allow margin
+            withdrawal_threshold=200000,  # Trigger after accumulation
+            monthly_withdrawal_amount=5000
+        )
+
+        self.assertIsNotNone(result)
+
+        # If withdrawal mode was activated
+        if result['summary']['withdrawal_mode_active']:
+            # Find the debt payoff event (should be first entry in withdrawal_details)
+            debt_payoff_event = None
+            for detail in result['withdrawal_details']:
+                if detail.get('event_type') == 'threshold_debt_payoff':
+                    debt_payoff_event = detail
+                    break
+
+            # If debt existed when threshold was reached, should have payoff event
+            if debt_payoff_event:
+                # Verify it's a debt payoff (no withdrawal, only debt repayment)
+                self.assertEqual(debt_payoff_event['amount_withdrawn'], 0,
+                               "Debt payoff event should have $0 withdrawal")
+                self.assertGreater(debt_payoff_event['debt_repaid'], 0,
+                                 "Debt payoff event should repay debt")
+
+                # After debt payoff, subsequent withdrawals should have $0 debt repaid
+                found_payoff = False
+                for detail in result['withdrawal_details']:
+                    if detail.get('event_type') == 'threshold_debt_payoff':
+                        found_payoff = True
+                    elif found_payoff:  # After the payoff event
+                        # Regular withdrawals after payoff should have no debt to repay
+                        self.assertEqual(detail['debt_repaid'], 0,
+                                       f"After debt payoff, withdrawals should have $0 debt repaid (found ${detail['debt_repaid']:.2f})")
+
+    @patch('app.yf.Ticker')
+    @patch('app.fetch_stock_data')
+    def test_no_new_margin_debt_during_withdrawal_mode(self, mock_fetch, mock_ticker):
+        """Test that no new margin debt is accumulated during withdrawal mode."""
+        # Setup: 6 months of data
+        mock_data = create_mock_stock_data(days=180, start_price=100, volatility=0.01)
+        mock_fetch.return_value = mock_data
+
+        mock_ticker_instance = Mock()
+        mock_ticker_instance.dividends = pd.Series()
+        mock_ticker.return_value = mock_ticker_instance
+
+        result = calculate_dca_core(
+            ticker='TEST',
+            start_date='2024-01-01',
+            end_date='2024-06-30',
+            amount=1000,  # $1000 daily
+            initial_amount=50000,
+            reinvest=False,
+            account_balance=60000,  # Constrained cash
+            margin_ratio=2.0,  # Allow margin
+            withdrawal_threshold=100000,
+            monthly_withdrawal_amount=5000
+        )
+
+        self.assertIsNotNone(result)
+
+        # If withdrawal mode activated
+        if result['summary']['withdrawal_mode_active']:
+            # Find when withdrawal mode started
+            withdrawal_start_idx = next(
+                (i for i, active in enumerate(result['withdrawal_mode']) if active),
+                None
+            )
+
+            if withdrawal_start_idx is not None and withdrawal_start_idx < len(result['borrowed']) - 10:
+                # Get debt at withdrawal mode start
+                debt_at_start = result['borrowed'][withdrawal_start_idx]
+
+                # Check debt trend after withdrawal mode starts
+                # It should decrease or stay same (paid down), NOT increase
+                for i in range(withdrawal_start_idx + 1, len(result['borrowed'])):
+                    current_debt = result['borrowed'][i]
+                    previous_debt = result['borrowed'][i - 1]
+
+                    # Debt should never increase during withdrawal mode
+                    # (it can only decrease via repayments or stay same)
+                    self.assertLessEqual(current_debt, previous_debt + 0.01,  # Allow tiny rounding
+                                       f"Debt should not increase during withdrawal mode (day {i})")
 
 
 if __name__ == '__main__':

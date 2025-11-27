@@ -24,6 +24,8 @@ The DCA (Dollar Cost Averaging) Simulator is a web-based financial analysis tool
 - **Initial Investment**: One-time lump sum investment on day 1
 - **Daily Amount**: Amount invested each trading day
 - **Account Balance**: Total cash available for the strategy
+- **Withdrawal Threshold** (Optional): Net portfolio value target to trigger withdrawal mode
+- **Monthly Withdrawal Amount** (Optional): Fixed monthly withdrawal during decumulation phase
 
 **Outputs**:
 - **Total Invested**: Principal amount contributed by the user
@@ -90,8 +92,14 @@ The DCA (Dollar Cost Averaging) Simulator is a web-based financial analysis tool
 - Interest Paid
 - Leverage Ratio
 - Average Cost per Share
+- Total Withdrawn (if withdrawal mode enabled)
 - Benchmark Performance (if enabled)
 - No-Margin Performance (if using margin)
+
+**Chart Visual Indicators**:
+- **Margin Call Markers**: Red dashed vertical lines with "⚠ Margin Call" labels
+- **Withdrawal Mode Background**: Green tint overlay from threshold activation onward
+- **Withdrawal Markers**: Small green dots at each monthly withdrawal event
 
 **Summary Cards**:
 - Total Invested
@@ -99,6 +107,10 @@ The DCA (Dollar Cost Averaging) Simulator is a web-based financial analysis tool
 - Net Portfolio Value
 - Total Shares
 - Total Dividends
+- **Total Withdrawn** (if withdrawal mode enabled)
+- **Withdrawal Start Date** (if withdrawal mode enabled)
+- **Withdrawal Count** (if withdrawal mode enabled)
+- **Withdrawal Status** (if withdrawal mode enabled)
 - Benchmark Value
 - Account Balance
 - ROI
@@ -114,7 +126,66 @@ The DCA (Dollar Cost Averaging) Simulator is a web-based financial analysis tool
 - Formula: `Total Cost Basis / Total Shares`
 - Distinguishes from "Total Invested" (principal only)
 
-### 6. User Experience Features
+### 6. Withdrawal Mode (Portfolio Decumulation)
+
+**Description**: Simulate transitioning from accumulation phase (building wealth) to decumulation phase (withdrawing income) when portfolio reaches a target net worth threshold.
+
+**Parameters**:
+- **Withdrawal Threshold**: Target net portfolio value to trigger withdrawal mode (e.g., $5,000,000)
+- **Monthly Withdrawal Amount**: Fixed amount withdrawn each month (e.g., $25,000)
+
+**Behavior**:
+
+**Phase 1 - Accumulation** (Before threshold):
+- Daily investments continue as configured
+- Margin borrowing allowed (if enabled)
+- Dividends reinvested (if configured)
+- Debt accumulates through margin trading
+
+**Phase 2 - Threshold Event** (When net value ≥ threshold):
+- **One-Time Complete Debt Payoff**: All margin debt immediately repaid
+  - Uses available cash first
+  - Sells shares if needed to cover remaining debt
+  - Tracked as special "Threshold Debt Payoff" event
+- **Withdrawal Mode Activates**: Permanently enabled (one-way transition)
+
+**Phase 3 - Decumulation** (After threshold):
+- **Daily Investments STOP**: No new capital deployed
+- **Monthly Withdrawals**: Fixed amount withdrawn on first trading day of each month
+  - Uses available cash first
+  - Sells shares if cash insufficient
+  - Continues even if portfolio value drops below threshold
+- **Dividend Reinvestment DISABLED**: Dividends go to cash to fund withdrawals
+- **No New Debt**: Margin borrowing disabled, debt stays at $0
+
+**Outputs**:
+- **Total Withdrawn**: Cumulative amount withdrawn over simulation
+- **Withdrawal Start Date**: Date when threshold was reached
+- **Withdrawal Count**: Number of monthly withdrawals executed
+- **Withdrawal Mode Status**: Active or Inactive
+- **Withdrawal Details Table**:
+  - Date of each withdrawal
+  - Share price at withdrawal
+  - Shares sold (if any)
+  - Sale proceeds (if shares sold)
+  - Debt repaid (for threshold event only)
+  - Amount withdrawn
+  - Cumulative withdrawn
+
+**Visualization**:
+- **Chart Background**: Green tint during withdrawal mode period
+- **Withdrawal Markers**: Small green dots on chart for each withdrawal
+- **Total Withdrawn Line**: Cumulative withdrawal amount over time
+- **Highlighted Debt Payoff Row**: Orange background for threshold event
+
+**Key Design Decisions**:
+- Withdrawal mode never deactivates once triggered (prevents oscillation)
+- Debt payoff happens immediately at threshold (clean slate for withdrawals)
+- Daily investments stop to prevent conflicting with withdrawal strategy
+- Dividends become cash flow (not reinvested) to fund lifestyle
+- Withdrawals continue even if portfolio depletes (realistic simulation)
+
+### 7. User Experience Features
 
 **Ticker Autocomplete**:
 - Real-time search suggestions from Yahoo Finance
@@ -167,10 +238,14 @@ The DCA (Dollar Cost Averaging) Simulator is a web-based financial analysis tool
 1. User submits form with investment parameters
 2. Backend fetches historical price and dividend data from Yahoo Finance
 3. Simulation runs day-by-day:
-   - Process dividends (reinvest or add to cash)
+   - Check margin requirements (force liquidation if equity < maintenance margin)
+   - Check insolvency (stop if equity ≤ $0)
+   - **Check withdrawal threshold (activate withdrawal mode if net value ≥ threshold)**
+   - **Execute one-time debt payoff (if threshold just reached and debt exists)**
+   - **Execute monthly withdrawal (if withdrawal mode active)**
+   - Process dividends (reinvest or add to cash, disabled during withdrawal mode)
    - Charge monthly interest (if using margin)
-   - Execute daily investment (from cash and/or margin)
-   - Check for margin call and liquidate if needed
+   - Execute daily investment (from cash and/or margin, **SKIPPED during withdrawal mode**)
    - Record all metrics
 4. Results returned as JSON with summary and time-series data
 5. Frontend renders interactive chart and summary cards
@@ -181,6 +256,7 @@ The DCA (Dollar Cost Averaging) Simulator is a web-based financial analysis tool
 - **Performance**: Page loads and calculations complete in under 3 seconds
 - **Usability**: Users can complete a simulation with minimal clicks and clear guidance
 - **Reliability**: All edge cases handled gracefully (no crashes, helpful error messages)
+- **Test Coverage**: Comprehensive test suite with 40+ tests covering domain logic, integration, calculations, and edge cases
 
 ## Known Limitations
 
@@ -200,15 +276,41 @@ The DCA (Dollar Cost Averaging) Simulator is a web-based financial analysis tool
 - **Historical Scenarios**: Pre-configured simulations for market events (2008 crash, COVID-19, etc.)
 - **Mobile App**: Native iOS/Android applications
 
+## Test Coverage
+
+The DCA Simulator has comprehensive test coverage with **40+ automated tests**:
+
+**Withdrawal Feature Tests (40 tests)**:
+- **Integration Tests** (12 tests): Full simulation scenarios including threshold activation, debt payoff, monthly withdrawals
+- **Domain Logic Tests** (10 tests): Core withdrawal execution function with various debt/cash scenarios
+- **Calculation Tests** (8 tests): Pure mathematical functions for share sales and debt repayment
+- **Edge Case Tests** (10 tests): Stress scenarios including insolvency, extreme debt, zero shares, margin calls during withdrawals
+
+**Additional Tests**:
+- Margin trading calculations and forced liquidations
+- Dividend reinvestment logic
+- Investment accounting and cost basis tracking
+- Analytics and performance metrics
+- Data validation and error handling
+
+All tests use mocked data for deterministic results and fast execution.
+
 ## Version History
 
 - **v1.0** (Initial Release): Basic DCA simulation with dividends
 - **v2.0** (Margin Trading): Added Robinhood-style margin with realistic constraints
 - **v2.1** (Bug Fixes): Fixed dividend double-counting, investment consistency, and average cost calculation
-- **v2.2** (Current): Stable release with all core features
+- **v2.2** (Polish): Added analytics, visualizations, and benchmark comparisons
+- **v3.0** (Current - Withdrawal Mode): Portfolio decumulation with threshold-triggered withdrawals
+  - Automatic debt payoff when threshold reached
+  - Monthly fixed withdrawals during decumulation phase
+  - Daily investments stop in withdrawal mode
+  - Dividend reinvestment disabled during withdrawals
+  - Comprehensive test suite with 40+ tests
+  - Visual indicators on chart (green background, withdrawal markers)
 
 ---
 
-**Last Updated**: November 23, 2025  
-**Document Owner**: Development Team  
+**Last Updated**: November 27, 2025
+**Document Owner**: Development Team
 **Status**: Active Development
