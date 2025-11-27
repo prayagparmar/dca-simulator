@@ -1307,16 +1307,19 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
         1. Check margin requirements - FIRST! Force liquidation if equity < maintenance margin
         2. Check insolvency - STOP simulation if equity ≤ $0 (matches Robinhood behavior)
         3. Check withdrawal threshold - activate withdrawal mode if net value >= threshold
-        4. Execute monthly withdrawal - withdraw fixed amount, prioritize debt repayment
-        5. Process dividends - paid on shares held overnight (disabled during withdrawal mode)
+           → ON ACTIVATION: Immediately repay ALL debt (one-time, sell shares if needed)
+        4. Execute monthly withdrawal - withdraw fixed amount (debt already cleared)
+        5. Process dividends - paid on shares held overnight (reinvestment disabled during withdrawal mode)
         6. Charge interest - monthly on first trading day of new month
-        7. Execute daily purchase - buy shares with cash and/or margin
+        7. Execute daily purchase - buy shares with cash and/or margin (SKIPPED during withdrawal mode)
 
         CRITICAL:
         - Margin call BEFORE dividends prevents "dividend resurrection" bug
         - Insolvency check prevents "zombie portfolio" bug
+        - Threshold activation includes ONE-TIME complete debt payoff (clean slate for withdrawals)
         - Withdrawal BEFORE dividends to properly disable reinvestment
         - Dividend reinvestment stops during withdrawal mode (cash goes to fund withdrawals)
+        - Daily investments stop during withdrawal mode (transition to decumulation phase)
         """
         # Normalize date to string format for consistency
         date_str = date if isinstance(date, str) else date.strftime('%Y-%m-%d')
@@ -1424,9 +1427,34 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
         # ==== STEP 3: Check Withdrawal Threshold ====
         # Check if net portfolio value has reached withdrawal threshold
         # Once activated, withdrawal mode never deactivates (one-way state)
+        # When threshold is reached, immediately repay ALL debt before starting withdrawals
         if not withdrawal_mode_active and withdrawal_threshold is not None:
             current_net_value = (total_shares * price) + (current_balance if current_balance else 0) - borrowed_amount
             if current_net_value >= withdrawal_threshold:
+                # Threshold reached! Repay all debt immediately (if any exists)
+                if borrowed_amount > 0:
+                    # Use execute_monthly_withdrawal with withdrawal_amount=0 to just repay debt
+                    (total_shares, current_balance, borrowed_amount, total_cost_basis,
+                     shares_sold, debt_repaid, _) = execute_monthly_withdrawal(
+                        0,  # No withdrawal, just debt repayment
+                        total_shares, price, borrowed_amount,
+                        current_balance, total_cost_basis
+                    )
+
+                    # Track this one-time debt payoff event
+                    if debt_repaid > 0:
+                        withdrawal_details.append({
+                            'date': date_str,
+                            'price': price,
+                            'shares_sold': shares_sold,
+                            'sale_proceeds': shares_sold * price,
+                            'debt_repaid': debt_repaid,
+                            'amount_withdrawn': 0,  # No withdrawal, just debt payoff
+                            'cumulative_withdrawn': total_withdrawn,
+                            'event_type': 'threshold_debt_payoff'  # Special marker
+                        })
+
+                # Now activate withdrawal mode (debt is cleared)
                 withdrawal_mode_active = True
                 withdrawal_mode_start_date = date_str
 
@@ -1510,32 +1538,38 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
             last_interest_month = current_month
 
         # ==== STEP 7: Execute Daily Purchase ====
-        daily_investment = amount
-        if first_day:
-            daily_investment += initial_amount
-            first_day = False
+        # Skip daily investments when withdrawal mode is active (decumulation phase)
+        if not withdrawal_mode_active:
+            daily_investment = amount
+            if first_day:
+                daily_investment += initial_amount
+                first_day = False
 
-        # Execute purchase using extracted function
-        shares_bought, cash_used, margin_borrowed, actual_investment, principal_used, current_balance, borrowed_amount = execute_purchase(
-            daily_investment, price, current_balance, borrowed_amount,
-            margin_ratio, total_shares, available_principal
-        )
+            # Execute purchase using extracted function
+            shares_bought, cash_used, margin_borrowed, actual_investment, principal_used, current_balance, borrowed_amount = execute_purchase(
+                daily_investment, price, current_balance, borrowed_amount,
+                margin_ratio, total_shares, available_principal
+            )
 
-        # Update portfolio and cost basis
-        if actual_investment > 0:
-            total_shares += shares_bought
-            total_cost_basis += actual_investment
+            # Update portfolio and cost basis
+            if actual_investment > 0:
+                total_shares += shares_bought
+                total_cost_basis += actual_investment
 
-            # Update total_invested (External Cash Injected)
-            # We track 'available_principal' to distinguish between user capital and recycled dividends/margin.
-            if account_balance is None:
-                # Infinite cash mode: All cash used is considered new investment
-                total_invested += cash_used
-            else:
-                # Constrained cash mode: Only count principal used (returned by execute_purchase)
-                available_principal -= principal_used
-                available_principal = max(0, available_principal)
-                total_invested += principal_used
+                # Update total_invested (External Cash Injected)
+                # We track 'available_principal' to distinguish between user capital and recycled dividends/margin.
+                if account_balance is None:
+                    # Infinite cash mode: All cash used is considered new investment
+                    total_invested += cash_used
+                else:
+                    # Constrained cash mode: Only count principal used (returned by execute_purchase)
+                    available_principal -= principal_used
+                    available_principal = max(0, available_principal)
+                    total_invested += principal_used
+        else:
+            # In withdrawal mode: still clear first_day flag (needed for tracking)
+            if first_day:
+                first_day = False
         
         current_value = total_shares * price
         
