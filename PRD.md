@@ -185,7 +185,36 @@ The DCA (Dollar Cost Averaging) Simulator is a web-based financial analysis tool
 - Dividends become cash flow (not reinvested) to fund lifestyle
 - Withdrawals continue even if portfolio depletes (realistic simulation)
 
-### 7. User Experience Features
+### 7. Investment Frequency
+
+**Description**: Customize the cadence of recurring investments to match user's investment schedule.
+
+**Frequency Options**:
+- **Daily**: Invest every trading day (default, original behavior)
+- **Weekly**: Invest once per week on same weekday as start date
+  - Example: If start date is Monday, invest every Monday
+  - Uses day-of-week matching: `current_date.dayofweek == start_date.dayofweek`
+- **Monthly**: Invest on first trading day of each month
+  - Prevents multiple investments within same month
+  - Uses month tracking pattern (same as interest charging)
+
+**Behavior**:
+- First day ALWAYS invests (initial_amount + amount) regardless of frequency
+- Benchmark comparisons ALWAYS use DAILY frequency for fair comparison
+- Frequency does not affect dividends, margin, or withdrawals
+- Lower frequencies reduce total invested (fewer investment events)
+
+**UI**:
+- Label: "Recurring Amount" (replaces "Daily Amount")
+- Dropdown selector with 3 predefined options (Daily/Weekly/Monthly)
+- Default: DAILY (backward compatible)
+
+**Technical Implementation**:
+- Pure function `should_invest_today()` handles frequency logic
+- Reuses existing month tracking pattern from interest/withdrawal features
+- Default parameter ensures backward compatibility
+
+### 8. User Experience Features
 
 **Ticker Autocomplete**:
 - Real-time search suggestions from Yahoo Finance
@@ -263,13 +292,11 @@ The DCA (Dollar Cost Averaging) Simulator is a web-based financial analysis tool
 1. **Trading Costs**: Does not account for commissions or transaction fees (assumes zero-fee platform)
 2. **Slippage**: Uses closing prices for all trades (no intraday price variation)
 3. **Tax Implications**: Does not calculate tax liabilities on dividends or capital gains
-4. **Market Hours**: Assumes investment happens on all trading days (no customization for weekly/monthly DCA)
-5. **Dividend Timing**: Uses ex-dividend dates for simplicity (not payment dates)
+4. **Dividend Timing**: Uses ex-dividend dates for simplicity (not payment dates)
 
 ## Future Enhancement Opportunities
 
 - **Tax-Aware Simulations**: Calculate estimated tax liabilities
-- **Custom Investment Schedules**: Weekly, bi-weekly, or monthly DCA
 - **Transaction Costs**: Configurable commission structure
 - **Portfolio Diversification**: Simulate DCA across multiple tickers
 - **Export Functionality**: Download results as CSV or PDF
@@ -301,13 +328,20 @@ All tests use mocked data for deterministic results and fast execution.
 - **v2.0** (Margin Trading): Added Robinhood-style margin with realistic constraints
 - **v2.1** (Bug Fixes): Fixed dividend double-counting, investment consistency, and average cost calculation
 - **v2.2** (Polish): Added analytics, visualizations, and benchmark comparisons
-- **v3.0** (Current - Withdrawal Mode): Portfolio decumulation with threshold-triggered withdrawals
+- **v3.0** (Withdrawal Mode): Portfolio decumulation with threshold-triggered withdrawals
   - Automatic debt payoff when threshold reached
   - Monthly fixed withdrawals during decumulation phase
   - Daily investments stop in withdrawal mode
   - Dividend reinvestment disabled during withdrawals
   - Comprehensive test suite with 40+ tests
   - Visual indicators on chart (green background, withdrawal markers)
+- **v3.1** (Current - Investment Frequency): Configurable investment cadence
+  - Daily, Weekly, Monthly frequency options
+  - Weekly: Invest on same weekday as start date
+  - Monthly: Invest on first trading day of each month
+  - Benchmark always uses DAILY frequency for fair comparison
+  - Backward compatible with default DAILY frequency
+  - 18 comprehensive tests for frequency logic
 
 ---
 
