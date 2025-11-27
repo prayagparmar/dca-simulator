@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DCA Simulator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>DCA Simulator</h1>
+            <p>Visualize your Dollar Cost Averaging strategy</p>
+        </header>
+
+        <div class="main-content">
+            <div class="controls">
+                <div class="control-grid">
+                    <div class="input-group relative">
+                        <label for="ticker">Stock Ticker</label>
+                        <input type="text" id="ticker" placeholder="e.g. AAPL or BTC-USD" value="AAPL"
+                            autocomplete="off">
+                        <div id="ticker-suggestions" class="suggestions-dropdown"></div>
+                    </div>
+                    <div class="input-group">
+                        <label for="start-date">Start Date</label>
+                        <input type="date" id="start-date" value="2023-01-01">
+                    </div>
+                    <div class="input-group">
+                        <label for="end-date">End Date (Optional)</label>
+                        <input type="date" id="end-date">
+                    </div>
+                    <div class="input-group">
+                        <label for="initial-amount">Initial Investment ($)</label>
+                        <input type="text" id="initial-amount" placeholder="e.g. 1,000" value="100,000"
+                            inputmode="numeric">
+                    </div>
+                    <div class="input-group">
+                        <label for="account-balance">Account Balance ($)</label>
+                        <input type="text" id="account-balance" placeholder="Optional (e.g. 5,000)" value="150,000"
+                            inputmode="numeric">
+                    </div>
+                    <div class="input-group">
+                        <label for="amount">Daily Amount ($)</label>
+                        <input type="text" id="amount" placeholder="e.g. 100" value="500" inputmode="numeric">
+                    </div>
+                    <div class="input-group relative">
+                        <label for="benchmark">Benchmark Ticker (Optional)</label>
+                        <input type="text" id="benchmark" placeholder="e.g. SPY" value="SPY" autocomplete="off">
+                        <div id="benchmark-suggestions" class="suggestions-dropdown"></div>
+                    </div>
+                    <div class="input-group">
+                        <label for="margin-ratio">Margin Ratio</label>
+                        <select id="margin-ratio">
+                            <option value="1.0" selected>1x (No Margin)</option>
+                            <option value="1.25">1.25x</option>
+                            <option value="1.5">1.5x</option>
+                            <option value="1.75">1.75x</option>
+                            <option value="2.0">2x</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="maintenance-margin">Maintenance Margin (%)</label>
+                        <input type="number" id="maintenance-margin" placeholder="e.g. 25" value="25" min="0" max="100"
+                            step="1">
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <div class="checkbox-wrapper">
+                        <input type="checkbox" id="reinvest">
+                        <label for="reinvest">Reinvest Dividends</label>
+                    </div>
+                    <button id="calculate-btn">Calculate</button>
+                </div>
+            </div>
+
+            <div class="warning-container" id="warning-container" style="display: none;"></div>
+
+            <div class="results" id="results-area" style="display: none;">
+                <!-- Hero Metrics Section -->
+                <div class="section-header">
+                    <h2>Key Performance</h2>
+                </div>
+                <div class="hero-cards">
+                    <div class="card hero-card">
+                        <h3>Total Return</h3>
+                        <p id="total-return" class="hero-value">-</p>
+                        <span id="total-return-delta" class="delta">-</span>
+                    </div>
+                    <div class="card hero-card">
+                        <h3>Net Portfolio Value</h3>
+                        <p id="net-portfolio-value" class="hero-value">-</p>
+                        <span class="subtitle">After Debt</span>
+                    </div>
+                    <div class="card hero-card">
+                        <h3>ROI</h3>
+                        <p id="roi" class="hero-value">-</p>
+                        <span class="subtitle">vs Invested</span>
+                    </div>
+                </div>
+
+                <!-- Investment Overview Section -->
+                <div class="section-header">
+                    <h2>Investment Overview</h2>
+                </div>
+                <div class="summary-cards">
+                    <div class="card">
+                        <h3>Total Invested</h3>
+                        <p id="total-invested">-</p>
+                    </div>
+                    <div class="card">
+                        <h3>Current Value</h3>
+                        <p id="current-value">-</p>
+                    </div>
+                    <div class="card">
+                        <h3>Total Shares</h3>
+                        <p id="total-shares">-</p>
+                    </div>
+                    <div class="card">
+                        <h3>Average Cost</h3>
+                        <p id="average-cost">-</p>
+                    </div>
+                    <div class="card">
+                        <h3>Total Dividends</h3>
+                        <p id="total-dividends">-</p>
+                    </div>
+                    <div class="card">
+                        <h3>Account Balance</h3>
+                        <p id="account-balance-summary">-</p>
+                    </div>
+                </div>
+
+                <!-- Risk & Performance Analytics Section -->
+                <div class="section-header">
+                    <h2>Risk & Performance Analytics</h2>
+                </div>
+                <div class="analytics-section">
+                    <div class="analytics-subsection">
+                        <h3 class="subsection-title">Risk Metrics</h3>
+                        <div class="analytics-cards">
+                            <div class="card analytics-card">
+                                <h4>Sharpe Ratio</h4>
+                                <p id="sharpe-ratio" class="analytics-value">-</p>
+                                <span id="sharpe-label" class="metric-label">-</span>
+                            </div>
+                            <div class="card analytics-card">
+                                <h4>Max Drawdown</h4>
+                                <p id="max-drawdown" class="analytics-value">-</p>
+                                <span id="drawdown-dates" class="metric-label">-</span>
+                            </div>
+                            <div class="card analytics-card">
+                                <h4>Volatility</h4>
+                                <p id="volatility" class="analytics-value">-</p>
+                                <span class="metric-label">Annualized</span>
+                            </div>
+                            <div class="card analytics-card">
+                                <h4>Win Rate</h4>
+                                <p id="win-rate" class="analytics-value">-</p>
+                                <div id="win-rate-bar" class="progress-bar">
+                                    <div id="win-rate-fill" class="progress-fill"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="analytics-subsection">
+                        <h3 class="subsection-title">Performance Metrics</h3>
+                        <div class="analytics-cards">
+                            <div class="card analytics-card">
+                                <h4>CAGR</h4>
+                                <p id="cagr" class="analytics-value">-</p>
+                                <span class="metric-label">Annualized</span>
+                            </div>
+                            <div class="card analytics-card">
+                                <h4>Best Day</h4>
+                                <p id="best-day" class="analytics-value">-</p>
+                                <span id="best-day-date" class="metric-label">-</span>
+                            </div>
+                            <div class="card analytics-card">
+                                <h4>Worst Day</h4>
+                                <p id="worst-day" class="analytics-value">-</p>
+                                <span id="worst-day-date" class="metric-label">-</span>
+                            </div>
+                            <div class="card analytics-card">
+                                <h4>Calmar Ratio</h4>
+                                <p id="calmar-ratio" class="analytics-value">-</p>
+                                <span id="calmar-label" class="metric-label">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Benchmark Comparison Section (conditional) -->
+                <div id="benchmark-section" style="display: none;">
+                    <div class="section-header">
+                        <h2>Benchmark Comparison</h2>
+                    </div>
+                    <div class="summary-cards">
+                        <div class="card">
+                            <h3>Benchmark Value</h3>
+                            <p id="benchmark-value">-</p>
+                        </div>
+                        <div class="card">
+                            <h3>Alpha</h3>
+                            <p id="alpha">-</p>
+                            <span id="alpha-label" class="subtitle">-</span>
+                        </div>
+                        <div class="card">
+                            <h3>Beta</h3>
+                            <p id="beta">-</p>
+                            <span id="beta-label" class="subtitle">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Margin Trading Section (conditional) -->
+                <div id="margin-section" style="display: none;">
+                    <div class="section-header">
+                        <h2>Margin Trading</h2>
+                    </div>
+                    <div class="summary-cards margin-section-cards">
+                        <div class="card margin-card">
+                            <h3>Total Borrowed</h3>
+                            <p id="total-borrowed">-</p>
+                        </div>
+                        <div class="card margin-card">
+                            <h3>Interest Paid</h3>
+                            <p id="interest-paid">-</p>
+                        </div>
+                        <div class="card margin-card">
+                            <h3>Current Leverage</h3>
+                            <p id="current-leverage">-</p>
+                        </div>
+                        <div class="card margin-card">
+                            <h3>Margin Calls</h3>
+                            <p id="margin-calls">-</p>
+                        </div>
+                        <div class="card no-margin-card" style="display: none;">
+                            <h3>No Margin Value</h3>
+                            <p id="no-margin-value">-</p>
+                        </div>
+                        <div class="card no-margin-card" style="display: none;">
+                            <h3>No Margin ROI</h3>
+                            <p id="no-margin-roi">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chart Section -->
+                <div class="chart-container">
+                    <canvas id="dcaChart"></canvas>
+                </div>
+
+                <!-- Margin Call Details Table -->
+                <div id="margin-call-table-container" style="display: none; margin-top: 30px;">
+                    <h3 style="color: #f59e0b; margin-bottom: 15px;">⚠️ Margin Call History</h3>
+                    <div style="overflow-x: auto;">
+                        <table id="margin-call-table" class="margin-call-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Price</th>
+                                    <th>Equity Ratio Before</th>
+                                    <th>Equity Ratio After</th>
+                                    <th>Shares Sold</th>
+                                    <th>Sale Proceeds</th>
+                                    <th>Debt Paid</th>
+                                    <th>Portfolio Before</th>
+                                    <th>Portfolio After</th>
+                                    <th>Equity Before</th>
+                                    <th>Equity After</th>
+                                </tr>
+                            </thead>
+                            <tbody id="margin-call-table-body">
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+
+</html>

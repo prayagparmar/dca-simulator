@@ -1,0 +1,41 @@
+{
+  "summary": {
+    "total_invested": 350000,
+    "current_value": 5760379.29,
+    "total_shares": 165885.66,
+    "total_dividends": 95130.81,
+    "roi": 835.16,
+    "account_balance": 0,
+    "total_borrowed": 2487302.78,
+    "total_interest_paid": 152842.46,
+    "current_leverage": 1.76,
+    "margin_calls": 2,
+    "net_portfolio_value": 3273076.51,
+    "average_cost": 38.66,
+    "insolvency_detected": false,
+    "insolvency_date": null,
+    "min_equity_value": 197175.11,
+    "min_equity_date": "2020-03-20",
+    "actual_max_drawdown": -0.956
+  },
+  "analytics": {
+    "total_return_pct": 835.16,
+    "cagr": 85.29,
+    "volatility": 152.64,
+    "sharpe_ratio": 0.55,
+    "max_drawdown": -99.86,
+    "max_drawdown_peak_date": "2021-11-19",
+    "max_drawdown_trough_date": "2022-03-07",
+    "win_rate": 58.4,
+    "best_day": 115.56,
+    "best_day_date": "2020-03-10",
+    "worst_day": -99.5,
+    "worst_day_date": "2022-03-07",
+    "calmar_ratio": 0.85,
+    "alpha": null,
+    "beta": null
+  },
+  "dates_count": 1323,
+  "first_date": "2019-08-01",
+  "last_date": "2024-10-31"
+}
