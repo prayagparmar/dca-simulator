@@ -233,8 +233,8 @@ def calculate_shares_to_sell_for_withdrawal(withdrawal_amount, margin_debt, cash
     # Total cash needed: repay debt + withdrawal amount
     total_needed = margin_debt + withdrawal_amount
 
-    # Cash already available
-    available_cash = max(0, cash_balance)
+    # Cash already available (handle None for infinite cash mode)
+    available_cash = max(0, cash_balance if cash_balance is not None else 0)
 
     # Additional cash needed from selling shares
     cash_from_sales_needed = max(0, total_needed - available_cash)
@@ -1195,8 +1195,9 @@ def execute_monthly_withdrawal(withdrawal_amount, total_shares, price, borrowed_
     # Update shares
     new_shares = total_shares - shares_sold
 
-    # Update cash: add sale proceeds
-    new_balance = current_balance + sale_proceeds
+    # Update cash: add sale proceeds (handle None for infinite cash mode)
+    safe_balance = current_balance if current_balance is not None else 0
+    new_balance = safe_balance + sale_proceeds
 
     # Priority 1: Repay debt
     actual_debt_repayment = min(new_balance, borrowed_amount)
@@ -1206,6 +1207,10 @@ def execute_monthly_withdrawal(withdrawal_amount, total_shares, price, borrowed_
     # Priority 2: Withdraw
     actual_withdrawal = min(new_balance, withdrawal_amount)
     new_balance = new_balance - actual_withdrawal
+
+    # Return None for balance if in infinite cash mode
+    if current_balance is None:
+        new_balance = None
 
     return new_shares, new_balance, new_borrowed_amount, new_cost_basis, shares_sold, actual_debt_repayment, actual_withdrawal
 
