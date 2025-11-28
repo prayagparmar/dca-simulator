@@ -108,11 +108,12 @@ class TestBasicDCASimulation(unittest.TestCase):
         
         # Day 1: Buy 1 share ($100), cash = $150
         # Day 2: Buy 1 share ($100), cash = $50
-        # Day 3-5: Skip (daily amount $100 > remaining cash $50, preserving cash)
-        # Actual behavior: Only invest when full daily amount available (no partial buys for DCA)
-        self.assertAlmostEqual(result['summary']['total_shares'], 2.0, places=1)
-        self.assertAlmostEqual(result['summary']['total_invested'], 200.0, places=1)
-        self.assertAlmostEqual(result['summary']['account_balance'], 50.0, places=1)
+        # Day 3: Invest remaining $50 (all available cash), buy 0.5 shares, cash = $0
+        # Day 4-5: No cash available, skip
+        # CORRECTED BEHAVIOR: Invests all available cash (bug fix removed magic number heuristic)
+        self.assertAlmostEqual(result['summary']['total_shares'], 2.5, places=1)
+        self.assertAlmostEqual(result['summary']['total_invested'], 250.0, places=1)
+        self.assertAlmostEqual(result['summary']['account_balance'], 0.0, places=1)
 
 
 class TestDividendManagement(unittest.TestCase):
@@ -182,10 +183,11 @@ class TestDividendManagement(unittest.TestCase):
         
         # Day 1: Buy 1 share. Cash = $150
         # Day 2: Buy 1 share. Dividend = $5 (1 share * $5). Cash = $55
-        # Day 3: Can't buy (daily amount is $100 but only $55 left)
-        self.assertAlmostEqual(result['summary']['total_shares'], 2.0, places=2)
+        # Day 3: Invest all $55 ($50 principal + $5 dividend), buy 0.55 shares. Cash = $0
+        # CORRECTED BEHAVIOR: Invests all available cash including dividend
+        self.assertAlmostEqual(result['summary']['total_shares'], 2.55, places=2)
         self.assertEqual(result['summary']['total_dividends'], 5.0)
-        self.assertAlmostEqual(result['summary']['account_balance'], 55.0, places=1)
+        self.assertAlmostEqual(result['summary']['account_balance'], 0.0, places=1)
 
 
 class TestMarginTrading(unittest.TestCase):

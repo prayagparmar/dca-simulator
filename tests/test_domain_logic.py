@@ -380,6 +380,78 @@ class TestExecutePurchase(unittest.TestCase):
         self.assertEqual(actual_inv, 0)
         self.assertEqual(new_bal, 1000)
 
+    def test_small_investment_with_insufficient_cash_ep003_regression(self):
+        """
+        REGRESSION TEST for EP-003 (QA-identified bug)
+
+        Tests that small daily investments ($50, < $100) correctly invest
+        available cash when insufficient funds exist. This test would have
+        caught the magic number heuristic bug where investments <= $100
+        got ZERO cash instead of investing what was available.
+
+        Bug: Lines 1051-1056 had "if daily_investment > 100" check
+        Fix: Removed arbitrary threshold, always invest available cash
+        """
+        result = execute_purchase(
+            daily_investment=50,  # Small amount (< $100) - triggers bug in old code
+            price=25.0,
+            current_balance=30,  # Have $30 but want to invest $50
+            borrowed_amount=0,
+            margin_ratio=1.0,  # No margin
+            total_shares=0,
+            available_principal=10000
+        )
+        shares, cash_used, margin_borrowed, actual_inv, principal_used, new_bal, new_debt = result
+
+        # CRITICAL: Should invest the $30 we have, NOT zero!
+        # Old bug: Would have returned shares=0, actual_inv=0
+        # Fixed: Returns shares=1.2, actual_inv=30
+        self.assertEqual(shares, 1.2)  # 30 / 25 = 1.2 shares
+        self.assertEqual(cash_used, 30)
+        self.assertEqual(margin_borrowed, 0)
+        self.assertEqual(actual_inv, 30)  # Invested $30 (not $0!)
+        self.assertEqual(principal_used, 30)
+        self.assertAlmostEqual(new_bal, 0, places=2)  # Used all available cash
+        self.assertEqual(new_debt, 0)
+
+    def test_small_investment_comparison_with_large(self):
+        """
+        Verifies $50 and $150 investments are treated equally when cash is insufficient.
+
+        This ensures no arbitrary threshold discriminates against small investors.
+        Both should invest their available cash proportionally.
+        """
+        # Test with $50 investment
+        result_small = execute_purchase(
+            daily_investment=50,
+            price=25.0,
+            current_balance=30,
+            borrowed_amount=0,
+            margin_ratio=1.0,
+            total_shares=0,
+            available_principal=10000
+        )
+        shares_small, _, _, actual_small, _, bal_small, _ = result_small
+
+        # Test with $150 investment
+        result_large = execute_purchase(
+            daily_investment=150,
+            price=25.0,
+            current_balance=30,
+            borrowed_amount=0,
+            margin_ratio=1.0,
+            total_shares=0,
+            available_principal=10000
+        )
+        shares_large, _, _, actual_large, _, bal_large, _ = result_large
+
+        # Both should invest ALL available cash ($30)
+        self.assertEqual(shares_small, shares_large)  # Same shares bought
+        self.assertEqual(actual_small, actual_large)  # Same actual investment
+        self.assertEqual(bal_small, bal_large)  # Same final balance (0)
+        self.assertEqual(actual_small, 30)  # Both invest $30
+        self.assertEqual(actual_large, 30)
+
 
 class TestExecuteMarginCall(unittest.TestCase):
     """Test the execute_margin_call() domain function"""

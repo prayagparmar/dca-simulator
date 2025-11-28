@@ -1046,14 +1046,9 @@ def execute_purchase(daily_investment, price, current_balance, borrowed_amount,
             actual_investment = daily_investment
             cash_used = daily_investment
         else:
-            # Not enough cash and no margin - invest what we have if it's a large initial
-            # otherwise skip to preserve cash
-            if daily_investment > 100:  # Heuristic: likely initial investment
-                actual_investment = max(0, current_balance)
-                cash_used = max(0, current_balance)
-            else:
-                actual_investment = 0
-                cash_used = 0
+            # Not enough cash and no margin - invest what we have
+            actual_investment = max(0, current_balance)
+            cash_used = max(0, current_balance)
 
     # Calculate shares bought
     if actual_investment > 0:

@@ -390,13 +390,13 @@ class TestDCACalculation(unittest.TestCase):
         # Test Case: Account Balance Cap
         # Initial Balance: $250
         # Daily Amount: $100
-        # Expected: 
+        # CORRECTED BEHAVIOR (bug fix): Invests all available cash
         # Day 1: Invest $100. Balance $150.
         # Day 2: Invest $100. Balance $50.
-        # Day 3: Invest $0 (Wait for funds). Balance $50.
-        # Day 4: Invest $0. Balance $50.
-        # Day 5: Invest $0. Balance $50.
-        
+        # Day 3: Invest $50 (all remaining). Balance $0.
+        # Day 4: Invest $0 (no cash). Balance $0.
+        # Day 5: Invest $0 (no cash). Balance $0.
+
         mock_stock = MagicMock()
         dates = pd.date_range(start='2023-01-01', periods=5, freq='D') # 5 days
         mock_stock.history.return_value = pd.DataFrame({'Close': [100] * 5}, index=dates)
@@ -410,34 +410,34 @@ class TestDCACalculation(unittest.TestCase):
             'amount': 100,
             'account_balance': 250
         }
-        
+
         response = self.app.post('/calculate', json=payload)
         data = json.loads(response.data)
-        
+
         self.assertEqual(response.status_code, 200)
-        
-        # Total Invested should be exactly $200 (2 days * 100)
-        self.assertEqual(data['summary']['total_invested'], 200.0)
-        
+
+        # Total Invested should be exactly $250 (all principal used)
+        self.assertEqual(data['summary']['total_invested'], 250.0)
+
         # Total Shares:
         # Day 1: $100 / $100 = 1 share
         # Day 2: $100 / $100 = 1 share
-        # Day 3: $0
-        # Total = 2 shares
-        self.assertEqual(data['summary']['total_shares'], 2.0)
-        
+        # Day 3: $50 / $100 = 0.5 shares
+        # Total = 2.5 shares
+        self.assertEqual(data['summary']['total_shares'], 2.5)
+
         # Verify Balance History
         # Day 1: Start 250 - 100 = 150
         # Day 2: 150 - 100 = 50
-        # Day 3: 50 (No buy)
-        # Day 4: 50
-        # Day 5: 50
+        # Day 3: 50 - 50 = 0
+        # Day 4: 0
+        # Day 5: 0
         self.assertIn('balance', data)
         self.assertEqual(data['balance'][0], 150.0)
         self.assertEqual(data['balance'][1], 50.0)
-        self.assertEqual(data['balance'][2], 50.0)
-        self.assertEqual(data['balance'][3], 50.0)
-        self.assertEqual(data['balance'][4], 50.0)
+        self.assertEqual(data['balance'][2], 0.0)
+        self.assertEqual(data['balance'][3], 0.0)
+        self.assertEqual(data['balance'][4], 0.0)
 
     @patch('app.yf.Ticker')
     def test_calculate_dca_dividends_to_balance(self, mock_ticker):
@@ -480,20 +480,19 @@ class TestDCACalculation(unittest.TestCase):
         # Current Balance = 110 - 100 = 10.
         self.assertEqual(data['balance'][1], 10.0)
         
-        # Day 3: 
-        # Balance 10 < Amount 100. No investment.
-        # Current Balance remains 10.
-        self.assertEqual(data['balance'][2], 10.0)
-        
-        # Total Invested: 100 + 100 = 200
+        # Day 3:
+        # Balance 10 < Amount 100. CORRECTED: Invest all $10 remaining.
+        # Current Balance = 0.
+        self.assertEqual(data['balance'][2], 0.0)
+
+        # Total Invested: 100 + 100 = 200 (principal only)
         self.assertEqual(data['summary']['total_invested'], 200.0)
-        
+
         # Total Dividends: 10
         self.assertEqual(data['summary']['total_dividends'], 10.0)
-        
-        # Ending Balance
-        # Ending Balance
-        self.assertEqual(data['summary']['account_balance'], 10.0)
+
+        # Ending Balance: All cash invested (including dividend)
+        self.assertEqual(data['summary']['account_balance'], 0.0)
 
     @patch('app.yf.Ticker')
     def test_calculate_dca_dividend_accumulation(self, mock_ticker):
@@ -547,17 +546,17 @@ class TestDCACalculation(unittest.TestCase):
         
         # Day 1: Buy 100. Bal 0. Shares 1.
         self.assertEqual(data['balance'][0], 0.0)
-        
-        # Day 2: Div 50. Bal 50. No buy (need 100).
-        self.assertEqual(data['balance'][1], 50.0)
-        
-        # Day 3: Div 50. Bal 100. Buy 100. Bal 0.
+
+        # Day 2: Div 50 (1 share * $50). Bal 50. CORRECTED: Invest $50. Bal 0. Shares 1.5.
+        self.assertEqual(data['balance'][1], 0.0)
+
+        # Day 3: Div 75 (1.5 shares * $50). Bal 75. Invest $75. Bal 0. Shares 2.25.
         self.assertEqual(data['balance'][2], 0.0)
-        
-        # Total Invested: Should be capped at account_balance (100), not raw total (200).
-        # This ensures ROI is calculated based on "Principal Invested", not recycled dividends.
+
+        # Total Invested: Capped at account_balance (100) - principal only, dividends excluded
         self.assertEqual(data['summary']['total_invested'], 100.0)
-        self.assertEqual(data['summary']['total_shares'], 2.0)
+        # Total Shares: 1 + 0.5 + 0.75 = 2.25 shares
+        self.assertAlmostEqual(data['summary']['total_shares'], 2.25, places=2)
 
 if __name__ == '__main__':
     unittest.main()
