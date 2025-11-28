@@ -727,9 +727,18 @@ def fetch_stock_data(ticker, start_date, end_date):
     for attempt in range(max_retries):
         try:
             stock = yf.Ticker(ticker)
+
+            # Configure session headers if available (for older yfinance versions)
+            try:
+                if hasattr(stock, 'session') and stock.session is not None:
+                    stock.session.headers.update({
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    })
+            except Exception as e:
+                print(f"INFO: Could not set User-Agent for {ticker}: {e}")
+
             # Get data with auto_adjust=False to get raw prices
             # This prevents double-counting dividends when we manually reinvest them
-            # yfinance 0.2.66+ uses curl_cffi which handles headers automatically
             hist = stock.history(start=start_date, end=end_date, auto_adjust=False)
 
             if hist.empty:
