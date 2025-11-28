@@ -599,3 +599,183 @@ button:disabled {
     color: #10b981;
     font-weight: 600;
 }
+
+/* Tooltip Styles (v3.0) */
+.label-with-tooltip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.tooltip-container {
+    position: relative;
+    display: inline-block;
+}
+
+.tooltip-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: rgba(139, 92, 246, 0.2);
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: help;
+    transition: all 0.2s;
+    border: 1px solid var(--accent);
+}
+
+.tooltip-icon:hover {
+    background: var(--accent);
+    color: white;
+    transform: scale(1.1);
+}
+
+.tooltip-text {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    z-index: 1000;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 280px;
+    padding: 0.75rem;
+    background-color: #1e293b;
+    color: var(--text-primary);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    border-radius: 0.5rem;
+    border: 1px solid var(--accent);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: opacity 0.2s, visibility 0.2s;
+    pointer-events: none;
+}
+
+.tooltip-text::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--accent);
+}
+
+.tooltip-container:hover .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* Mobile-specific tooltip positioning */
+@media (max-width: 768px) {
+    .tooltip-text {
+        width: 240px;
+        left: auto;
+        right: -10px;
+        transform: none;
+    }
+
+    .tooltip-text::after {
+        left: auto;
+        right: 20px;
+        transform: none;
+    }
+}
+
+/* Mobile Responsive Styles (v3.0) */
+@media (max-width: 768px) {
+    .container {
+        padding: 1rem;
+    }
+
+    header h1 {
+        font-size: 2rem;
+    }
+
+    header p {
+        font-size: 0.875rem;
+    }
+
+    .controls {
+        padding: 1.25rem;
+    }
+
+    .control-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .chart-container {
+        height: 400px;
+        padding: 1rem;
+    }
+
+    .summary-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .hero-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .analytics-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    button {
+        width: 100%;
+    }
+
+    .hero-value {
+        font-size: 2rem !important;
+    }
+
+    .analytics-value {
+        font-size: 1.5rem !important;
+    }
+
+    .card p {
+        font-size: 1.25rem;
+    }
+}
+
+/* Small mobile devices */
+@media (max-width: 480px) {
+    .container {
+        padding: 0.75rem;
+    }
+
+    header h1 {
+        font-size: 1.75rem;
+    }
+
+    .controls {
+        padding: 1rem;
+    }
+
+    .input-group input,
+    .input-group select {
+        font-size: 0.9375rem;
+    }
+
+    .chart-container {
+        height: 300px;
+    }
+
+    /* Make tables scroll horizontally on small screens */
+    .margin-call-table,
+    .withdrawal-table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}
