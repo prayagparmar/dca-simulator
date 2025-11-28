@@ -13,7 +13,11 @@
       "Bash(tree:*)",
       "Bash(git init:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(pip show:*)",
+      "Bash(git revert:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
