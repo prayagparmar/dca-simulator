@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import requests
 import json
+import os
 from datetime import datetime
 
 app = Flask(__name__)
@@ -24,7 +25,10 @@ MONTHS_PER_YEAR = 12  # Used for annualized interest calculations
 # ==============================================================================
 
 # Load Fed Funds rate data for margin interest calculation
-FED_FUNDS_DATA = pd.read_csv('FEDFUNDS.csv', parse_dates=['observation_date'])
+# Use absolute path for production deployment compatibility
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+FEDFUNDS_PATH = os.path.join(SCRIPT_DIR, 'FEDFUNDS.csv')
+FED_FUNDS_DATA = pd.read_csv(FEDFUNDS_PATH, parse_dates=['observation_date'])
 FED_FUNDS_DATA.set_index('observation_date', inplace=True)
 
 def get_fed_funds_rate(date_str):
@@ -1920,4 +1924,7 @@ def search_ticker():
         return jsonify([])
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8080)
+    # Production-ready configuration with environment variables
+    port = int(os.environ.get('PORT', 8080))
+    debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    app.run(debug=debug, host='0.0.0.0', port=port)
