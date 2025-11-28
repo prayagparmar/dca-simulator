@@ -704,6 +704,7 @@ def fetch_stock_data(ticker, start_date, end_date):
     Fetch historical stock price data from Yahoo Finance.
 
     Validates data quality and ensures consistent date format.
+    Includes retry logic for production reliability.
 
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'SPY')
@@ -719,29 +720,47 @@ def fetch_stock_data(ticker, start_date, end_date):
         >>> hist.index[0]  # Returns string date
         '2024-01-02'
     """
-    try:
-        stock = yf.Ticker(ticker)
-        # Get data with auto_adjust=False to get raw prices
-        # This prevents double-counting dividends when we manually reinvest them
-        hist = stock.history(start=start_date, end=end_date, auto_adjust=False)
+    import time
+    max_retries = 3
+    retry_delay = 1  # seconds
 
-        if hist.empty:
+    for attempt in range(max_retries):
+        try:
+            stock = yf.Ticker(ticker)
+            # Configure session with headers for better compatibility
+            stock.session.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+
+            # Get data with auto_adjust=False to get raw prices
+            # This prevents double-counting dividends when we manually reinvest them
+            hist = stock.history(start=start_date, end=end_date, auto_adjust=False)
+
+            if hist.empty:
+                print(f"WARNING: {ticker} returned empty data for {start_date} to {end_date} (attempt {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                    continue
+                return None
+
+            # Validate price data - handle NaN/None values
+            if hist['Close'].isnull().any():
+                print(f"WARNING: {ticker} has missing price data in range {start_date} to {end_date}")
+                return None
+
+            # Ensure index is string format for consistency
+            if isinstance(hist.index, pd.DatetimeIndex):
+                hist.index = hist.index.strftime('%Y-%m-%d')
+
+            print(f"SUCCESS: Fetched {len(hist)} days of data for {ticker}")
+            return hist
+
+        except Exception as e:
+            print(f"ERROR fetching stock data for {ticker} (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay * (attempt + 1))
+                continue
             return None
 
-        # Validate price data - handle NaN/None values
-        if hist['Close'].isnull().any():
-            print(f"WARNING: {ticker} has missing price data in range {start_date} to {end_date}")
-            return None
-
-        # Ensure index is string format for consistency
-        if isinstance(hist.index, pd.DatetimeIndex):
-            hist.index = hist.index.strftime('%Y-%m-%d')
-
-        return hist
-
-    except Exception as e:
-        print(f"ERROR fetching stock data for {ticker}: {e}")
-        return None
+    return None
 
 
 def prepare_dividends(stock, start_date, end_date):
