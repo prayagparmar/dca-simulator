@@ -29,7 +29,8 @@ class TestNegativeEquityDrawdown(unittest.TestCase):
         print(f"Peak value: ${equity_values[peak_idx]}, Trough value: ${equity_values[trough_idx]}")
 
         # If equity hits $0, drawdown should be -100%
-        self.assertAlmostEqual(max_dd, -1.0, places=2,
+        # Function returns percentage format: -100.0 (not decimal -1.0)
+        self.assertAlmostEqual(max_dd, -100.0, places=2,
             msg="Equity hitting $0 should show -100% drawdown")
 
     def test_max_drawdown_with_negative_equity(self):
@@ -50,8 +51,9 @@ class TestNegativeEquityDrawdown(unittest.TestCase):
 
         # Negative equity means MORE than -100% drawdown!
         # From $100 to -$10 is a 110% decline!
-        expected_dd = (-10 - 100) / 100  # -110%
-        self.assertLess(max_dd, -1.0,
+        # Function returns percentage format: -110.0 (not decimal -1.1)
+        expected_dd = (-10 - 100) / 100 * 100  # -110% in percentage format
+        self.assertLess(max_dd, -100.0,
             msg="Negative equity should show >100% drawdown")
 
     def test_daily_return_from_zero_equity(self):
@@ -88,6 +90,8 @@ class TestNegativeEquityDrawdown(unittest.TestCase):
         print(f"Worst day return: {worst_return:.2%}")
 
         # If equity goes from $100 to $0, return = -100%
+        # Note: daily_returns uses decimal format (-1.0), not percentage
+        # This is different from max_drawdown which uses percentage format
         self.assertAlmostEqual(worst_return, -1.0, places=2,
             msg="Crash to $0 should show -100% return")
 
