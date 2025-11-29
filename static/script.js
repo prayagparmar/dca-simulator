@@ -166,14 +166,14 @@ function renderResults(data, benchmarkTicker) {
     // Build warnings HTML
     let warningsHTML = '';
 
-    // Start date mismatch warning
+    // Start date mismatch info
     if (actualStartDate && requestedStartDate && actualStartDate !== requestedStartDate) {
         warningsHTML += `
-            <div class="warning-message">
-                <strong>⚠️ Start Date Mismatch:</strong>
+            <div class="info-message">
+                <strong>ℹ️ Start Date Adjusted:</strong>
                 Requested start date was <strong>${requestedStartDate}</strong>,
                 but data is only available from <strong>${actualStartDate}</strong>.
-                The comparison uses the actual start date.
+                The simulation uses the actual start date.
             </div>
         `;
     }

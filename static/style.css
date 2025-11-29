@@ -484,6 +484,20 @@ button:disabled {
     color: #fde047;
 }
 
+.info-message {
+    padding: 1rem 1.25rem;
+    border-radius: 0.5rem;
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(14, 165, 233, 0.1));
+    border-left: 4px solid #06b6d4;
+    color: #67e8f9;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.info-message strong {
+    color: #a5f3fc;
+}
+
 /* Margin Card Styling */
 .margin-card {
     border-left: 3px solid #fb923c;
@@ -868,16 +882,17 @@ button:disabled {
 /* Mobile-specific tooltip positioning */
 @media (max-width: 768px) {
     .tooltip-text {
-        width: 240px;
-        left: auto;
-        right: -10px;
-        transform: none;
+        width: 90vw;
+        max-width: 280px;
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
     }
 
     .tooltip-text::after {
-        left: auto;
-        right: 20px;
-        transform: none;
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
     }
 }
 

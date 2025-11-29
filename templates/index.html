@@ -86,7 +86,7 @@
                     <li><strong>The Comparison:</strong> "Tesla vs Bitcoin vs S&P 500 since 2015"</li>
                     <li><strong>The What-If:</strong> "What if I invested during the 2008 crash?"</li>
                 </ul>
-                <p class="cta-arrow">👇 <strong>Switch to Calculator tab to start simulating</strong> 👇</p>
+                <p class="cta-arrow"><strong>Switch to Calculator tab to start simulating</strong></p>
             </div>
             </div>
         </div>
@@ -152,7 +152,13 @@
                         <div id="benchmark-suggestions" class="suggestions-dropdown"></div>
                     </div>
                     <div class="input-group">
-                        <label for="margin-ratio">Margin Ratio</label>
+                        <label for="margin-ratio" class="label-with-tooltip">
+                            <span>Margin Ratio</span>
+                            <div class="tooltip-container">
+                                <span class="tooltip-icon">i</span>
+                                <span class="tooltip-text">Maximum leverage allowed. 1x = no margin (cash only). 2x = borrow up to 100% of your equity. Interest charged monthly at Fed Funds Rate + 0.5%. Margin is only used when cash depletes.</span>
+                            </div>
+                        </label>
                         <select id="margin-ratio">
                             <option value="1.0" selected>1x (No Margin)</option>
                             <option value="1.25">1.25x</option>
