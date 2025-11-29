@@ -1506,13 +1506,14 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
                     if debt_repaid > 0:
                         withdrawal_details.append({
                             'date': date_str,
+                            'event_type': 'threshold_debt_payoff',
                             'price': price,
                             'shares_sold': shares_sold,
                             'sale_proceeds': shares_sold * price,
                             'debt_repaid': debt_repaid,
                             'amount_withdrawn': 0,  # No withdrawal, just debt payoff
                             'cumulative_withdrawn': total_withdrawn,
-                            'event_type': 'threshold_debt_payoff'  # Special marker
+                            'funded_by': 'share_sale'
                         })
 
                 # Now activate withdrawal mode (debt is cleared)
@@ -1530,6 +1531,9 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
 
             # Execute withdrawal on first day of new month
             if current_month != last_withdrawal_month:
+                # Track cash before withdrawal
+                cash_before_withdrawal = current_balance if current_balance is not None else 0
+
                 # Execute withdrawal
                 (total_shares, current_balance, borrowed_amount, total_cost_basis,
                  shares_sold, debt_repaid, amount_withdrawn) = execute_monthly_withdrawal(
@@ -1537,19 +1541,23 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
                     current_balance, total_cost_basis
                 )
 
-                # Track withdrawal details
-                if amount_withdrawn > 0 or shares_sold > 0:
-                    total_withdrawn += amount_withdrawn
-                    withdrawal_dates.append(date_str)
-                    withdrawal_details.append({
-                        'date': date_str,
-                        'price': price,
-                        'shares_sold': shares_sold,
-                        'sale_proceeds': shares_sold * price,
-                        'debt_repaid': debt_repaid,
-                        'amount_withdrawn': amount_withdrawn,
-                        'cumulative_withdrawn': total_withdrawn
-                    })
+                # Track withdrawal details (always track, even if $0 to show dividend-funded withdrawals)
+                total_withdrawn += amount_withdrawn
+                withdrawal_dates.append(date_str)
+                withdrawal_details.append({
+                    'date': date_str,
+                    'event_type': 'withdrawal',
+                    'requested_amount': monthly_withdrawal_amount,
+                    'price': price,
+                    'shares_sold': shares_sold,
+                    'sale_proceeds': shares_sold * price,
+                    'debt_repaid': debt_repaid,
+                    'amount_withdrawn': amount_withdrawn,
+                    'cash_before': cash_before_withdrawal,
+                    'cash_after': current_balance if current_balance is not None else 0,
+                    'cumulative_withdrawn': total_withdrawn,
+                    'funded_by': 'dividends' if shares_sold == 0 and amount_withdrawn > 0 else 'share_sale' if shares_sold > 0 else 'partial'
+                })
 
                 last_withdrawal_month = current_month
 
@@ -1562,11 +1570,25 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
         # Check for dividends on this day
         day_dividend = dividends.get(date_str)
         if day_dividend:
+            cash_before_dividend = current_balance
             shares_added, total_cost_basis, current_balance, dividend_income = process_dividend(
                 total_shares, day_dividend, price, effective_reinvest, current_balance, total_cost_basis
             )
             total_shares += shares_added
             cumulative_dividends += dividend_income
+
+            # Track dividend income during withdrawal mode
+            if withdrawal_mode_active and dividend_income > 0:
+                withdrawal_details.append({
+                    'date': date_str,
+                    'event_type': 'dividend',
+                    'dividend_per_share': day_dividend,
+                    'shares_owned': total_shares - shares_added,  # Shares before dividend reinvestment
+                    'dividend_income': dividend_income,
+                    'cash_before': cash_before_dividend if cash_before_dividend is not None else 0,
+                    'cash_after': current_balance if current_balance is not None else 0,
+                    'cumulative_withdrawn': total_withdrawn
+                })
 
         # ==== STEP 6: Charge Interest ====
         # Monthly interest charge (on the first day of each month)
