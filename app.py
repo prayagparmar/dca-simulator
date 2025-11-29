@@ -1282,6 +1282,73 @@ def index():
     return render_template('index.html')
 
 
+def initialize_simulation_state(account_balance):
+    """
+    Initialize all state variables for a DCA simulation.
+
+    Returns a dictionary containing all simulation state variables.
+    This separates initialization logic from the main simulation loop.
+
+    Args:
+        account_balance: Starting cash balance (None for infinite cash mode)
+
+    Returns:
+        Dictionary with all initialized state variables
+    """
+    return {
+        # Portfolio tracking
+        'total_invested': 0,  # User's actual capital invested (excludes dividends and margin)
+        'total_cost_basis': 0,  # Total money spent on shares (Principal + Dividends + Margin)
+        'available_principal': account_balance if account_balance is not None else 0,  # Remaining user capital
+        'total_shares': 0,
+        'cumulative_dividends': 0,
+        'current_balance': account_balance,  # Actual liquid cash in account
+
+        # Margin trading
+        'borrowed_amount': 0.0,
+        'total_interest_paid': 0.0,
+        'margin_calls_triggered': 0,
+        'margin_call_dates': [],
+        'margin_call_details': [],
+        'last_interest_month': None,
+
+        # Withdrawal tracking
+        'withdrawal_mode_active': False,
+        'withdrawal_mode_start_date': None,
+        'total_withdrawn': 0.0,
+        'withdrawal_dates': [],
+        'withdrawal_details': [],
+        'last_withdrawal_month': None,
+
+        # Investment frequency tracking
+        'last_investment_month': None,
+
+        # Insolvency tracking (Robinhood-accurate behavior)
+        'insolvency_detected': False,
+        'insolvency_date': None,
+        'min_equity': float('inf'),
+        'min_equity_date': None,
+        'peak_equity': 0,
+
+        # Time series arrays
+        'dates': [],
+        'invested_values': [],
+        'portfolio_values': [],
+        'dividend_values': [],
+        'balance_values': [],
+        'borrowed_values': [],
+        'interest_values': [],
+        'net_portfolio_values': [],
+        'leverage_values': [],
+        'average_cost_values': [],
+        'withdrawal_mode_values': [],
+        'withdrawal_amount_values': [],
+
+        # Flags
+        'first_day': True
+    }
+
+
 def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, reinvest, target_dates=None, account_balance=None, margin_ratio=NO_MARGIN_RATIO, maintenance_margin=DEFAULT_MAINTENANCE_MARGIN, withdrawal_threshold=None, monthly_withdrawal_amount=None, frequency='DAILY'):
     # Fetch historical price data
     hist = fetch_stock_data(ticker, start_date, end_date)
@@ -1298,69 +1365,47 @@ def calculate_dca_core(ticker, start_date, end_date, amount, initial_amount, rei
         if hist is None:
             return None
 
-    # Initialize simulation variables
-    total_invested = 0  # Tracks user's actual capital invested (excludes dividends and margin)
-    total_cost_basis = 0  # Tracks total money spent on shares (Principal + Dividends + Margin)
+    # Initialize simulation state using helper function
+    state = initialize_simulation_state(account_balance)
 
-    # available_principal: Tracks remaining user capital (not dividends or margin)
-    # Purpose: Distinguish between "user's money" and "recycled dividends" for total_invested metric
-    # - Starts at account_balance (initial capital)
-    # - Decreases when cash is used to buy shares
-    # - Does NOT increase when dividends are received (those aren't new capital)
-    # - Used to calculate total_invested = sum of principal actually deployed
-    # Example: $10k initial, buy $100/day = available_principal decreases by $100 daily
-    available_principal = account_balance if account_balance is not None else 0
-
-    total_shares = 0
-    cumulative_dividends = 0
-
-    # current_balance: The actual liquid cash in account
-    # - Decreases when buying shares
-    # - Increases when dividends received (if not reinvested)
-    # - Used for margin calculations and purchase decisions
-    # - Single source of truth for available funds
-    current_balance = account_balance
-
-    # Margin trading variables
-    borrowed_amount = 0.0
-    total_interest_paid = 0.0
-    margin_calls_triggered = 0
-    margin_call_dates = []  # Track dates when margin calls occur
-    margin_call_details = []  # Track detailed information for each margin call
-    last_interest_month = None  # Track when we last charged interest
-
-    # Withdrawal tracking variables
-    withdrawal_mode_active = False
-    withdrawal_mode_start_date = None
-    total_withdrawn = 0.0
-    withdrawal_dates = []
-    withdrawal_details = []
-    last_withdrawal_month = None
-
-    # Investment frequency tracking
-    last_investment_month = None  # Track monthly investments
-
-    # Insolvency tracking variables (matches Robinhood behavior)
-    insolvency_detected = False
-    insolvency_date = None
-    min_equity = float('inf')  # Track actual minimum equity (can go negative)
-    min_equity_date = None
-    peak_equity = 0  # Track peak for actual drawdown calculation
-
-    dates = []
-    invested_values = []
-    portfolio_values = []
-    dividend_values = []
-    balance_values = []
-    borrowed_values = []
-    interest_values = []
-    net_portfolio_values = []
-    leverage_values = []  # Track leverage ratio over time
-    average_cost_values = [] # Track average cost per share
-    withdrawal_mode_values = []  # Track withdrawal mode status (boolean)
-    withdrawal_amount_values = []  # Track cumulative withdrawn amount
-
-    first_day = True
+    # Unpack commonly used variables for readability in the loop
+    total_invested = state['total_invested']
+    total_cost_basis = state['total_cost_basis']
+    available_principal = state['available_principal']
+    total_shares = state['total_shares']
+    cumulative_dividends = state['cumulative_dividends']
+    current_balance = state['current_balance']
+    borrowed_amount = state['borrowed_amount']
+    total_interest_paid = state['total_interest_paid']
+    margin_calls_triggered = state['margin_calls_triggered']
+    margin_call_dates = state['margin_call_dates']
+    margin_call_details = state['margin_call_details']
+    last_interest_month = state['last_interest_month']
+    withdrawal_mode_active = state['withdrawal_mode_active']
+    withdrawal_mode_start_date = state['withdrawal_mode_start_date']
+    total_withdrawn = state['total_withdrawn']
+    withdrawal_dates = state['withdrawal_dates']
+    withdrawal_details = state['withdrawal_details']
+    last_withdrawal_month = state['last_withdrawal_month']
+    last_investment_month = state['last_investment_month']
+    insolvency_detected = state['insolvency_detected']
+    insolvency_date = state['insolvency_date']
+    min_equity = state['min_equity']
+    min_equity_date = state['min_equity_date']
+    peak_equity = state['peak_equity']
+    dates = state['dates']
+    invested_values = state['invested_values']
+    portfolio_values = state['portfolio_values']
+    dividend_values = state['dividend_values']
+    balance_values = state['balance_values']
+    borrowed_values = state['borrowed_values']
+    interest_values = state['interest_values']
+    net_portfolio_values = state['net_portfolio_values']
+    leverage_values = state['leverage_values']
+    average_cost_values = state['average_cost_values']
+    withdrawal_mode_values = state['withdrawal_mode_values']
+    withdrawal_amount_values = state['withdrawal_amount_values']
+    first_day = state['first_day']
 
     for date, row in hist.iterrows():
         """

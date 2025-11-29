@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock
 import pandas as pd
 import json
 from app import app
+from tests.conftest import create_mock_stock_data
 
 class TestDCACalculation(unittest.TestCase):
     def setUp(self):
@@ -11,15 +12,8 @@ class TestDCACalculation(unittest.TestCase):
 
     @patch('app.yf.Ticker')
     def test_calculate_dca_no_dividends(self, mock_ticker):
-        # Mock stock data
-        mock_stock = MagicMock()
-        dates = pd.date_range(start='2023-01-01', periods=3, freq='D')
-        # Prices: 100, 200, 300
-        data = {'Close': [100.0, 200.0, 300.0]}
-        hist = pd.DataFrame(data, index=dates)
-        mock_stock.history.return_value = hist
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        # Use shared helper to create mock (eliminates 8 lines of boilerplate)
+        mock_ticker.return_value = create_mock_stock_data([100.0, 200.0, 300.0], start_date='2023-01-01')
 
         # Request
         payload = {
@@ -45,19 +39,12 @@ class TestDCACalculation(unittest.TestCase):
 
     @patch('app.yf.Ticker')
     def test_calculate_dca_with_dividends(self, mock_ticker):
-        # Mock stock data
-        mock_stock = MagicMock()
-        dates = pd.date_range(start='2023-01-01', periods=3, freq='D')
-        # Prices: 100, 100, 100 (Constant price to make math easy)
-        data = {'Close': [100.0, 100.0, 100.0]}
-        hist = pd.DataFrame(data, index=dates)
-        mock_stock.history.return_value = hist
-        
-        # Mock dividends: $10 dividend on Day 2
-        dividends = pd.Series([10.0], index=[dates[1]])
-        mock_stock.dividends = dividends
-        
-        mock_ticker.return_value = mock_stock
+        # Use shared helper with dividends (eliminates 11 lines of boilerplate)
+        mock_ticker.return_value = create_mock_stock_data(
+            [100.0, 100.0, 100.0],
+            dividends={'2023-01-02': 10.0},  # $10 dividend on Day 2
+            start_date='2023-01-01'
+        )
 
         # Request
         payload = {
