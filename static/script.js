@@ -849,13 +849,31 @@ function renderResults(data, benchmarkTicker) {
                 return value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
             };
 
-            // Check if this is the special debt payoff event
-            const isDebtPayoff = withdrawal.event_type === 'threshold_debt_payoff';
+            // Check event type
+            const eventType = withdrawal.event_type;
 
-            if (isDebtPayoff) {
-                // Highlight debt payoff row
-                row.style.backgroundColor = 'rgba(251, 146, 60, 0.15)'; // Orange tint
-                row.style.borderLeft = '4px solid #fb923c'; // Orange border
+            if (eventType === 'dividend') {
+                // Dividend income row (green tint)
+                row.style.backgroundColor = 'rgba(34, 197, 94, 0.1)'; // Green tint
+                row.style.borderLeft = '4px solid #22c55e'; // Green border
+                const cashIncrease = (withdrawal.cash_after || 0) - (withdrawal.cash_before || 0);
+                row.innerHTML = `
+                    <td><strong>${withdrawal.date}</strong><br><span style="color: #22c55e; font-size: 0.85em;">💰 Dividend Income</span></td>
+                    <td colspan="3" style="color: #22c55e;">
+                        <strong>+${formatCurrency(withdrawal.dividend_income)}</strong> dividend
+                        <br><span style="font-size: 0.85em;">${formatCurrency(withdrawal.dividend_per_share)}/share × ${formatNumber(withdrawal.shares_owned)} shares</span>
+                    </td>
+                    <td>—</td>
+                    <td style="color: #22c55e;">
+                        Cash: ${formatCurrency(withdrawal.cash_before)} → ${formatCurrency(withdrawal.cash_after)}
+                        <br><span style="font-size: 0.85em; color: #22c55e;">+${formatCurrency(cashIncrease)}</span>
+                    </td>
+                    <td>${formatCurrency(withdrawal.cumulative_withdrawn)}</td>
+                `;
+            } else if (eventType === 'threshold_debt_payoff') {
+                // Debt payoff row (orange tint)
+                row.style.backgroundColor = 'rgba(251, 146, 60, 0.15)';
+                row.style.borderLeft = '4px solid #fb923c';
                 row.innerHTML = `
                     <td><strong>${withdrawal.date}</strong><br><span style="color: #fb923c; font-size: 0.85em;">⚡ Threshold Reached - Debt Payoff</span></td>
                     <td>${formatCurrency(withdrawal.price)}</td>
@@ -867,13 +885,21 @@ function renderResults(data, benchmarkTicker) {
                 `;
             } else {
                 // Regular withdrawal row
+                const fundedBy = withdrawal.funded_by || '';
+                let fundingBadge = '';
+                if (fundedBy === 'dividends') {
+                    fundingBadge = '<br><span style="color: #22c55e; font-size: 0.85em;">✓ Funded by Dividends</span>';
+                } else if (fundedBy === 'share_sale') {
+                    fundingBadge = '<br><span style="color: #8b5cf6; font-size: 0.85em;">📊 Shares Sold</span>';
+                }
+
                 row.innerHTML = `
-                    <td><strong>${withdrawal.date}</strong></td>
-                    <td>${formatCurrency(withdrawal.price)}</td>
-                    <td>${formatNumber(withdrawal.shares_sold)}</td>
-                    <td>${formatCurrency(withdrawal.sale_proceeds)}</td>
-                    <td>${formatCurrency(withdrawal.debt_repaid)}</td>
-                    <td class="withdrawal-amount">${formatCurrency(withdrawal.amount_withdrawn)}</td>
+                    <td><strong>${withdrawal.date}</strong>${fundingBadge}</td>
+                    <td>${withdrawal.price ? formatCurrency(withdrawal.price) : '—'}</td>
+                    <td>${formatNumber(withdrawal.shares_sold || 0)}</td>
+                    <td>${formatCurrency(withdrawal.sale_proceeds || 0)}</td>
+                    <td>${formatCurrency(withdrawal.debt_repaid || 0)}</td>
+                    <td class="withdrawal-amount">${formatCurrency(withdrawal.amount_withdrawn || 0)}</td>
                     <td><strong>${formatCurrency(withdrawal.cumulative_withdrawn)}</strong></td>
                 `;
             }
