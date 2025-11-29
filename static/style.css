@@ -974,3 +974,83 @@ button:disabled {
         -webkit-overflow-scrolling: touch;
     }
 }
+
+/* =================================================================
+   TAB NAVIGATION (v4.2)
+   ================================================================= */
+
+.tab-navigation {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid #334155;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.tab-button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.tab-button:hover {
+    color: var(--text-primary);
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.tab-button.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: rgba(139, 92, 246, 0.15);
+}
+
+.tab-icon {
+    font-size: 1.25rem;
+}
+
+.tab-label {
+    font-weight: 600;
+}
+
+.tab-content {
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Mobile optimization for tabs */
+@media (max-width: 640px) {
+    .tab-button {
+        padding: 0.625rem 1rem;
+        font-size: 0.9375rem;
+    }
+    
+    .tab-icon {
+        font-size: 1.125rem;
+    }
+    
+    .tab-navigation {
+        margin-bottom: 1.5rem;
+    }
+}
+

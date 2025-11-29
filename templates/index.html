@@ -16,8 +16,21 @@
             <p>Visualize your Dollar Cost Averaging strategy</p>
         </header>
 
-        <!-- Hero Section -->
-        <div class="hero-section">
+        <!-- Tab Navigation -->
+        <div class="tab-navigation">
+            <button class="tab-button active" data-tab="calculator">
+                <span class="tab-icon">🧮</span>
+                <span class="tab-label">Calculator</span>
+            </button>
+            <button class="tab-button" data-tab="about">
+                <span class="tab-icon">📖</span>
+                <span class="tab-label">About</span>
+            </button>
+        </div>
+
+        <!-- About Tab Content -->
+        <div class="tab-content" id="about-tab" style="display: none;">
+            <div class="hero-section">
             <div class="hero-intro">
                 <h2>Plan Your Investment Journey with Real Historical Data</h2>
                 <p class="hero-tagline">
@@ -73,11 +86,14 @@
                     <li><strong>The Comparison:</strong> "Tesla vs Bitcoin vs S&P 500 since 2015"</li>
                     <li><strong>The What-If:</strong> "What if I invested during the 2008 crash?"</li>
                 </ul>
-                <p class="cta-arrow">👇 <strong>Start by entering your investment parameters below</strong> 👇</p>
+                <p class="cta-arrow">👇 <strong>Switch to Calculator tab to start simulating</strong> 👇</p>
+            </div>
             </div>
         </div>
 
-        <div class="main-content">
+        <!-- Calculator Tab Content -->
+        <div class="tab-content" id="calculator-tab">
+            <div class="main-content">
             <div class="controls">
                 <div class="control-grid">
                     <div class="input-group relative">
@@ -441,6 +457,8 @@
                     </div>
                 </div>
             </div>
+            </div>
+        </div>
         </div>
     </div>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
