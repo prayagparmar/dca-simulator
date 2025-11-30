@@ -73,15 +73,8 @@ class TestDCACalculation(unittest.TestCase):
 
     @patch('app.yf.Ticker')
     def test_calculate_dca_with_initial_investment(self, mock_ticker):
-        # Mock stock data
-        mock_stock = MagicMock()
-        dates = pd.date_range(start='2023-01-01', periods=3, freq='D')
-        # Prices: 100, 200, 300
-        data = {'Close': [100.0, 200.0, 300.0]}
-        hist = pd.DataFrame(data, index=dates)
-        mock_stock.history.return_value = hist
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        # Use shared helper
+        mock_ticker.return_value = create_mock_stock_data([100.0, 200.0, 300.0], start_date='2023-01-01')
 
         # Request
         payload = {
@@ -107,22 +100,18 @@ class TestDCACalculation(unittest.TestCase):
         
     @patch('app.yf.Ticker')
     def test_calculate_dca_with_end_date(self, mock_ticker):
-        # Mock stock data
-        mock_stock = MagicMock()
-        dates = pd.date_range(start='2023-01-01', periods=5, freq='D')
-        # Prices: 100, 200, 300, 400, 500
-        data = {'Close': [100.0, 200.0, 300.0, 400.0, 500.0]}
-        hist = pd.DataFrame(data, index=dates)
-        
-        # Mock history call to filter by end date
+        # Use shared helper with side_effect for date filtering
+        base_mock = create_mock_stock_data([100.0, 200.0, 300.0, 400.0, 500.0], start_date='2023-01-01')
+
+        # Add side_effect to filter by end date
         def side_effect(start=None, end=None, **kwargs):
+            hist = base_mock.history.return_value
             if end:
                 return hist[hist.index < end]
             return hist
-            
-        mock_stock.history.side_effect = side_effect
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+
+        base_mock.history.side_effect = side_effect
+        mock_ticker.return_value = base_mock
 
         # Request
         payload = {
@@ -148,14 +137,8 @@ class TestDCACalculation(unittest.TestCase):
 
     @patch('app.yf.Ticker')
     def test_calculate_dca_with_benchmark(self, mock_ticker):
-        # Mock stock data
-        mock_stock = MagicMock()
-        dates = pd.date_range(start='2023-01-01', periods=3, freq='D')
-        data = {'Close': [100.0, 200.0, 300.0]}
-        hist = pd.DataFrame(data, index=dates)
-        mock_stock.history.return_value = hist
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        # Use shared helper (same mock for both TEST and SPY)
+        mock_ticker.return_value = create_mock_stock_data([100.0, 200.0, 300.0], start_date='2023-01-01')
 
         # Request
         payload = {
@@ -278,9 +261,8 @@ class TestDCACalculation(unittest.TestCase):
         
     @patch('app.yf.Ticker')
     def test_calculate_dca_empty_data(self, mock_ticker):
-        mock_stock = MagicMock()
-        mock_stock.history.return_value = pd.DataFrame()
-        mock_ticker.return_value = mock_stock
+        # Use shared helper with empty data
+        mock_ticker.return_value = create_mock_stock_data([])
 
         payload = {
             'ticker': 'INVALID',
@@ -384,11 +366,7 @@ class TestDCACalculation(unittest.TestCase):
         # Day 4: Invest $0 (no cash). Balance $0.
         # Day 5: Invest $0 (no cash). Balance $0.
 
-        mock_stock = MagicMock()
-        dates = pd.date_range(start='2023-01-01', periods=5, freq='D') # 5 days
-        mock_stock.history.return_value = pd.DataFrame({'Close': [100] * 5}, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100] * 5, start_date='2023-01-01')
 
         payload = {
             'ticker': 'CAP',
@@ -435,12 +413,11 @@ class TestDCACalculation(unittest.TestCase):
         # Day 2: Dividend $10/share. Income $10. Balance $100 + $10 = $110. Invest $100. Balance $10.
         # Day 3: Invest $0 (Wait). Balance $10.
         
-        mock_stock = MagicMock()
-        dates = pd.date_range(start='2023-01-01', periods=3, freq='D')
-        mock_stock.history.return_value = pd.DataFrame({'Close': [100] * 3}, index=dates)
-        # Dividend on Day 2
-        mock_stock.dividends = pd.Series([10.0], index=[dates[1]])
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data(
+            [100] * 3,
+            dividends={'2023-01-02': 10.0},
+            start_date='2023-01-01'
+        )
 
         payload = {
             'ticker': 'DIVBAL',
@@ -507,15 +484,11 @@ class TestDCACalculation(unittest.TestCase):
         # Day 2: Div $50. Bal 50. No buy.
         # Day 3: Div $50. Bal 100. Buy $100. Bal 0. Shares = 2.
         
-        mock_stock = MagicMock()
-        dates = pd.date_range(start='2023-01-01', periods=3, freq='D')
-        mock_stock.history.return_value = pd.DataFrame({'Close': [100] * 3}, index=dates)
-        
-        # Dividends on Day 2 and Day 3
-        # Day 2: $50/share. 1 share * 50 = 50.
-        # Day 3: $50/share. 1 share * 50 = 50.
-        mock_stock.dividends = pd.Series([50.0, 50.0], index=[dates[1], dates[2]])
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data(
+            [100] * 3,
+            dividends={'2023-01-02': 50.0, '2023-01-03': 50.0},
+            start_date='2023-01-01'
+        )
 
         payload = {
             'ticker': 'ACCUM',
