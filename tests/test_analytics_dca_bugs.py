@@ -13,6 +13,7 @@ import unittest
 import pandas as pd
 from unittest.mock import MagicMock, patch
 from app import calculate_dca_core, calculate_alpha_from_cagr
+from tests.conftest import create_mock_stock_data
 
 
 class TestAnalyticsDCABugs(unittest.TestCase):
@@ -26,21 +27,9 @@ class TestAnalyticsDCABugs(unittest.TestCase):
         self.mock_ticker_patcher.stop()
 
     def setup_mock_data(self, prices, dividends=None):
-        """Helper to create mock stock data"""
-        mock_stock = MagicMock()
-        dates = pd.date_range(start='2024-01-01', periods=len(prices), freq='D').strftime('%Y-%m-%d').tolist()
-        mock_stock.history.return_value = pd.DataFrame({'Close': prices}, index=dates)
-
-        if dividends:
-            div_series = pd.Series(dtype=float)
-            for date_str, value in dividends.items():
-                div_series[date_str] = value
-            mock_stock.dividends = div_series
-        else:
-            mock_stock.dividends = pd.Series(dtype=float)
-
-        self.mock_ticker.return_value = mock_stock
-        return dates
+        """Wrapper around conftest helper for backward compatibility"""
+        self.mock_ticker.return_value = create_mock_stock_data(prices, dividends=dividends, start_date='2024-01-01')
+        return pd.date_range(start='2024-01-01', periods=len(prices), freq='D').strftime('%Y-%m-%d').tolist()
 
     def test_sharpe_ratio_negative_with_dca_contributions(self):
         """

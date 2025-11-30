@@ -10,6 +10,7 @@ import unittest
 import pandas as pd
 from unittest.mock import MagicMock, patch
 from app import calculate_dca_core
+from tests.conftest import create_mock_stock_data
 
 
 class TestBenchmarkDateAlignment(unittest.TestCase):
@@ -23,11 +24,8 @@ class TestBenchmarkDateAlignment(unittest.TestCase):
         self.mock_ticker_patcher.stop()
 
     def setup_mock_data(self, ticker, prices, start_date):
-        """Helper to create mock stock data with specific start date"""
-        mock_stock = MagicMock()
-        dates = pd.date_range(start=start_date, periods=len(prices), freq='D').strftime('%Y-%m-%d').tolist()
-        mock_stock.history.return_value = pd.DataFrame({'Close': prices}, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
+        """Helper to create mock stock data with specific start date - uses conftest"""
+        mock_stock = create_mock_stock_data(prices, start_date=start_date)
 
         # Store this mock for the specific ticker
         if not hasattr(self, 'ticker_mocks'):

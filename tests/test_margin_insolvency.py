@@ -13,6 +13,7 @@ import unittest
 import pandas as pd
 from unittest.mock import MagicMock, patch
 from app import calculate_dca_core, check_insolvency
+from tests.conftest import create_mock_stock_data
 
 
 class TestMarginInsolvency(unittest.TestCase):
@@ -26,17 +27,16 @@ class TestMarginInsolvency(unittest.TestCase):
         self.mock_ticker_patcher.stop()
 
     def setup_mock_data(self, prices, dividends_data=None):
-        """Helper to create mock stock data"""
-        mock_stock = MagicMock()
-        dates = pd.date_range(start='2024-01-01', periods=len(prices), freq='D').strftime('%Y-%m-%d').tolist()
-        mock_stock.history.return_value = pd.DataFrame({'Close': prices}, index=dates)
+        """Helper using conftest"""
+        # Convert dividends_data Series to dict if needed
+        dividends = None
+        if dividends_data is not None:
+            if hasattr(dividends_data, 'to_dict'):
+                dividends = {str(k): v for k, v in dividends_data.to_dict().items()}
+            else:
+                dividends = dividends_data
 
-        if dividends_data:
-            mock_stock.dividends = pd.Series(dividends_data)
-        else:
-            mock_stock.dividends = pd.Series(dtype=float)
-
-        self.mock_ticker.return_value = mock_stock
+        self.mock_ticker.return_value = create_mock_stock_data(prices, dividends=dividends, start_date='2024-01-01')
 
     def test_insolvency_detection_at_zero_equity(self):
         """
