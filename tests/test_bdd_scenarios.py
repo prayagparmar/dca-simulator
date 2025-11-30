@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch
 from app import calculate_dca_core
+from tests.conftest import create_mock_stock_data
 
 class TestBDDScenarios(unittest.TestCase):
     """
@@ -23,16 +24,10 @@ class TestBDDScenarios(unittest.TestCase):
         self.mock_ticker_patcher.stop()
         self.mock_fed_patcher.stop()
 
-    def setup_mock_data(self, prices):
-        """Helper to setup mock price data"""
-        mock_stock = MagicMock()
-        # Use string dates to avoid Index/Timestamp confusion in app.py
-        dates = pd.date_range(start='2024-01-01', periods=len(prices), freq='D').strftime('%Y-%m-%d').tolist()
-        mock_stock.history.return_value = pd.DataFrame({'Close': prices}, index=dates)
-        # Initialize dividends with DatetimeIndex to allow slicing
-        mock_stock.dividends = pd.Series(dtype=float, index=pd.DatetimeIndex([]))
-        self.mock_ticker.return_value = mock_stock
-        return dates
+    def setup_mock_data(self, prices, dividends=None):
+        """Wrapper around conftest helper"""
+        self.mock_ticker.return_value = create_mock_stock_data(prices, dividends=dividends, start_date='2024-01-01')
+        return pd.date_range(start='2024-01-01', periods=len(prices), freq='D').strftime('%Y-%m-%d').tolist()
 
     def test_scenario_buying_power_limit(self):
         """
