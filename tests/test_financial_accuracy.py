@@ -7,6 +7,7 @@ import unittest
 import pandas as pd
 from unittest.mock import MagicMock, patch
 from app import calculate_dca_core
+from tests.conftest import create_mock_stock_data
 
 
 class TestFinancialAccuracy(unittest.TestCase):
@@ -24,20 +25,9 @@ class TestFinancialAccuracy(unittest.TestCase):
         self.mock_fed_patcher.stop()
     
     def setup_mock_data(self, prices, dividends=None):
-        mock_stock = MagicMock()
-        dates = pd.date_range(start='2024-01-01', periods=len(prices), freq='D').strftime('%Y-%m-%d').tolist()
-        mock_stock.history.return_value = pd.DataFrame({'Close': prices}, index=dates)
-        
-        if dividends:
-            div_series = pd.Series(dtype=float)
-            for date_str, value in dividends.items():
-                div_series[date_str] = value
-            mock_stock.dividends = div_series
-        else:
-            mock_stock.dividends = pd.Series(dtype=float)
-        
-        self.mock_ticker.return_value = mock_stock
-        return dates
+        """Wrapper around conftest helper for backward compatibility"""
+        self.mock_ticker.return_value = create_mock_stock_data(prices, dividends=dividends, start_date='2024-01-01')
+        return pd.date_range(start='2024-01-01', periods=len(prices), freq='D').strftime('%Y-%m-%d').tolist()
     
     def test_roi_calculation_positive(self):
         """Verify ROI calculation for gains"""
@@ -84,12 +74,7 @@ class TestFinancialAccuracy(unittest.TestCase):
         """Verify compound interest on margin debt"""
         # 12 months simulation
         dates = pd.date_range(start='2024-01-01', end='2024-12-31', freq='D')
-        prices = [100] * len(dates)
-        
-        mock_stock = MagicMock()
-        mock_stock.history.return_value = pd.DataFrame({'Close': prices}, index=dates.strftime('%Y-%m-%d').tolist())
-        mock_stock.dividends = pd.Series(dtype=float)
-        self.mock_ticker.return_value = mock_stock
+        self.mock_ticker.return_value = create_mock_stock_data([100] * len(dates), start_date='2024-01-01')
         
         result = calculate_dca_core(
             ticker='TEST',
@@ -182,20 +167,10 @@ class TestFinancialAccuracy(unittest.TestCase):
             '2024-10-01': 1.0,
             '2025-01-01': 1.0
         }
-        
+
         # 1 year + 1 day
         dates = pd.date_range(start='2024-01-01', end='2025-01-02', freq='D')
-        prices = [100] * len(dates)
-        
-        mock_stock = MagicMock()
-        mock_stock.history.return_value = pd.DataFrame({'Close': prices}, index=dates.strftime('%Y-%m-%d').tolist())
-        
-        div_series = pd.Series(dtype=float)
-        for date_str, value in dividends.items():
-            div_series[date_str] = value
-        mock_stock.dividends = div_series
-        
-        self.mock_ticker.return_value = mock_stock
+        self.mock_ticker.return_value = create_mock_stock_data([100] * len(dates), dividends=dividends, start_date='2024-01-01')
         
         result = calculate_dca_core(
             ticker='TEST',
@@ -237,15 +212,10 @@ class TestFinancialAccuracy(unittest.TestCase):
     def test_interest_rate_fed_plus_spread(self):
         """Verify interest = (Fed Rate + 0.5%) / 12"""
         self.mock_get_fed_rate.return_value = 0.04  # 4% Fed Rate
-        
+
         # 2 months to trigger interest
         dates = pd.date_range(start='2024-01-01', end='2024-02-15', freq='D')
-        prices = [100] * len(dates)
-        
-        mock_stock = MagicMock()
-        mock_stock.history.return_value = pd.DataFrame({'Close': prices}, index=dates.strftime('%Y-%m-%d').tolist())
-        mock_stock.dividends = pd.Series(dtype=float)
-        self.mock_ticker.return_value = mock_stock
+        self.mock_ticker.return_value = create_mock_stock_data([100] * len(dates), start_date='2024-01-01')
         
         result = calculate_dca_core(
             ticker='TEST',

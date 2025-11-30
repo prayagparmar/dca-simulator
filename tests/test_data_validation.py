@@ -7,6 +7,7 @@ import unittest
 import pandas as pd
 from unittest.mock import MagicMock, patch
 from app import calculate_dca_core
+from tests.conftest import create_mock_stock_data
 
 
 class TestDataValidation(unittest.TestCase):
@@ -25,9 +26,7 @@ class TestDataValidation(unittest.TestCase):
     
     def test_empty_ticker(self):
         """Should handle empty ticker gracefully"""
-        mock_stock = MagicMock()
-        mock_stock.history.return_value = pd.DataFrame()
-        self.mock_ticker.return_value = mock_stock
+        self.mock_ticker.return_value = create_mock_stock_data([])
         
         result = calculate_dca_core(
             ticker='',
@@ -45,9 +44,7 @@ class TestDataValidation(unittest.TestCase):
     
     def test_invalid_ticker_no_data(self):
         """Should return None for ticker with no data"""
-        mock_stock = MagicMock()
-        mock_stock.history.return_value = pd.DataFrame()
-        self.mock_ticker.return_value = mock_stock
+        self.mock_ticker.return_value = create_mock_stock_data([])
         
         result = calculate_dca_core(
             ticker='INVALIDTICKER123',
@@ -65,9 +62,7 @@ class TestDataValidation(unittest.TestCase):
     
     def test_future_start_date(self):
         """Should handle future dates (no historical data)"""
-        mock_stock = MagicMock()
-        mock_stock.history.return_value = pd.DataFrame()
-        self.mock_ticker.return_value = mock_stock
+        self.mock_ticker.return_value = create_mock_stock_data([])
         
         result = calculate_dca_core(
             ticker='TEST',
@@ -85,11 +80,8 @@ class TestDataValidation(unittest.TestCase):
     
     def test_end_date_before_start_date(self):
         """Should handle reversed date range"""
-        mock_stock = MagicMock()
-        dates = ['2024-01-03', '2024-01-02', '2024-01-01']  # Reversed
-        mock_stock.history.return_value = pd.DataFrame({'Close': [100, 100, 100]}, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        self.mock_ticker.return_value = mock_stock
+        # Reversed dates - using first date in list as start
+        self.mock_ticker.return_value = create_mock_stock_data([100, 100, 100], start_date='2024-01-03')
         
         # Should still work (yfinance handles date ordering)
         result = calculate_dca_core(
@@ -109,11 +101,7 @@ class TestDataValidation(unittest.TestCase):
     
     def test_zero_daily_amount(self):
         """Zero daily investment should work (lump sum only)"""
-        mock_stock = MagicMock()
-        dates = ['2024-01-01', '2024-01-02']
-        mock_stock.history.return_value = pd.DataFrame({'Close': [100, 100]}, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        self.mock_ticker.return_value = mock_stock
+        self.mock_ticker.return_value = create_mock_stock_data([100, 100], start_date='2024-01-01')
         
         result = calculate_dca_core(
             ticker='TEST',
@@ -132,11 +120,7 @@ class TestDataValidation(unittest.TestCase):
     
     def test_negative_amount(self):
         """Negative amounts should be handled gracefully"""
-        mock_stock = MagicMock()
-        dates = ['2024-01-01']
-        mock_stock.history.return_value = pd.DataFrame({'Close': [100]}, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        self.mock_ticker.return_value = mock_stock
+        self.mock_ticker.return_value = create_mock_stock_data([100], start_date='2024-01-01')
         
         result = calculate_dca_core(
             ticker='TEST',
@@ -156,11 +140,7 @@ class TestDataValidation(unittest.TestCase):
     
     def test_extreme_margin_ratio(self):
         """Very high margin ratio"""
-        mock_stock = MagicMock()
-        dates = ['2024-01-01', '2024-01-02']
-        mock_stock.history.return_value = pd.DataFrame({'Close': [100, 100]}, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        self.mock_ticker.return_value = mock_stock
+        self.mock_ticker.return_value = create_mock_stock_data([100, 100], start_date='2024-01-01')
         
         result = calculate_dca_core(
             ticker='TEST',
@@ -180,11 +160,7 @@ class TestDataValidation(unittest.TestCase):
     
     def test_zero_maintenance_margin(self):
         """0% maintenance margin (infinite leverage tolerance)"""
-        mock_stock = MagicMock()
-        dates = ['2024-01-01', '2024-01-02', '2024-01-03']
-        mock_stock.history.return_value = pd.DataFrame({'Close': [100, 100, 50]}, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        self.mock_ticker.return_value = mock_stock
+        self.mock_ticker.return_value = create_mock_stock_data([100, 100, 50], start_date='2024-01-01')
         
         result = calculate_dca_core(
             ticker='TEST',
@@ -203,11 +179,7 @@ class TestDataValidation(unittest.TestCase):
     
     def test_very_small_investment(self):
         """Penny investments"""
-        mock_stock = MagicMock()
-        dates = ['2024-01-01', '2024-01-02']
-        mock_stock.history.return_value = pd.DataFrame({'Close': [100, 100]}, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        self.mock_ticker.return_value = mock_stock
+        self.mock_ticker.return_value = create_mock_stock_data([100, 100], start_date='2024-01-01')
         
         result = calculate_dca_core(
             ticker='TEST',
@@ -237,14 +209,7 @@ class TestExtendedDataValidation(unittest.TestCase):
         NOTE: App may not validate frequency at calculate_dca_core level.
         Invalid frequency might default to DAILY or cause error.
         """
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=5, freq='D')
-        prices = [100] * 5
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100] * 5, start_date='2024-01-01')
 
         # Test with invalid frequency
         result = calculate_dca_core(
@@ -263,14 +228,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv022_very_large_initial_amount(self, mock_ticker):
         """DV-022: Very large initial amount (billions)"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=3, freq='D')
-        prices = [100, 101, 102]
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100, 101, 102], start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -288,14 +246,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv023_negative_initial_amount(self, mock_ticker):
         """DV-023: Negative initial investment"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=3, freq='D')
-        prices = [100] * 3
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100] * 3, start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -312,14 +263,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv024_fractional_penny_amount(self, mock_ticker):
         """DV-024: Fractional penny amount ($0.001)"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=10, freq='D')
-        prices = [1] * 10
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([1] * 10, start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -337,14 +281,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv025_margin_ratio_exactly_one(self, mock_ticker):
         """DV-025: Margin ratio exactly 1.0 (boundary)"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=5, freq='D')
-        prices = [100] * 5
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100] * 5, start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -363,14 +300,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv026_margin_ratio_below_one(self, mock_ticker):
         """DV-026: Margin ratio below 1.0 (invalid)"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=3, freq='D')
-        prices = [100] * 3
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100] * 3, start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -388,14 +318,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv027_maintenance_margin_above_one(self, mock_ticker):
         """DV-027: Maintenance margin above 1.0 (100%)"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=3, freq='D')
-        prices = [100, 95, 90]
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100, 95, 90], start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -415,14 +338,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv028_negative_maintenance_margin(self, mock_ticker):
         """DV-028: Negative maintenance margin"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=3, freq='D')
-        prices = [100] * 3
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100] * 3, start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -441,14 +357,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv029_withdrawal_threshold_zero(self, mock_ticker):
         """DV-029: Withdrawal threshold of $0"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=5, freq='D')
-        prices = [100, 105, 110, 115, 120]
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100, 105, 110, 115, 120], start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -468,14 +377,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv030_withdrawal_amount_negative(self, mock_ticker):
         """DV-030: Negative monthly withdrawal amount"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=10, freq='D')
-        prices = [100] * 10
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100] * 10, start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -494,14 +396,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv031_withdrawal_exceeds_portfolio(self, mock_ticker):
         """DV-031: Withdrawal amount exceeds portfolio value"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=5, freq='D')
-        prices = [100] * 5
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100] * 5, start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -521,14 +416,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv032_same_start_end_date(self, mock_ticker):
         """DV-032: Start date equals end date (single day)"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-15', periods=1, freq='D')
-        prices = [100]
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100], start_date='2024-01-15')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -546,14 +434,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv033_reinvest_with_no_dividends(self, mock_ticker):
         """DV-033: Reinvest enabled but no dividends paid"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=10, freq='D')
-        prices = [100 + i for i in range(10)]
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)  # No dividends
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100 + i for i in range(10)], start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -571,14 +452,8 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv034_zero_price_stock(self, mock_ticker):
         """DV-034: Stock with $0 price (delisted/bankrupt)"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=5, freq='D')
-        prices = [100, 50, 10, 1, 0]  # Goes to zero
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        # Goes to zero
+        mock_ticker.return_value = create_mock_stock_data([100, 50, 10, 1, 0], start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -595,14 +470,8 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv035_extremely_high_price(self, mock_ticker):
         """DV-035: Extremely high stock price (Berkshire Hathaway scenario)"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=5, freq='D')
-        prices = [500000, 505000, 510000, 515000, 520000]  # $500k+
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        # $500k+ stock price
+        mock_ticker.return_value = create_mock_stock_data([500000, 505000, 510000, 515000, 520000], start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -621,14 +490,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv036_weekly_frequency_single_week(self, mock_ticker):
         """DV-036: Weekly frequency with only one week of data"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=7, freq='D')
-        prices = [100] * 7
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100] * 7, start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -647,14 +509,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv037_monthly_frequency_single_month(self, mock_ticker):
         """DV-037: Monthly frequency with only one month of data"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=31, freq='D')
-        prices = [100] * 31
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100] * 31, start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -673,14 +528,7 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv038_account_balance_exactly_one_investment(self, mock_ticker):
         """DV-038: Account balance exactly covers one investment"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=10, freq='D')
-        prices = [100] * 10
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        mock_ticker.return_value = create_mock_stock_data([100] * 10, start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -699,14 +547,8 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv039_margin_and_withdrawal_together(self, mock_ticker):
         """DV-039: Margin trading + withdrawal mode enabled simultaneously"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=30, freq='D')
-        prices = [100 + i for i in range(30)]  # Growing portfolio
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(dtype=float)
-        mock_ticker.return_value = mock_stock
+        # Growing portfolio
+        mock_ticker.return_value = create_mock_stock_data([100 + i for i in range(30)], start_date='2024-01-01')
 
         result = calculate_dca_core(
             ticker='TEST',
@@ -728,17 +570,14 @@ class TestExtendedDataValidation(unittest.TestCase):
     @patch('app.yf.Ticker')
     def test_dv040_all_features_enabled(self, mock_ticker):
         """DV-040: All features enabled simultaneously (stress test)"""
-        mock_stock = MagicMock()
-        dates = pd.date_range('2024-01-01', periods=100, freq='D')
-        prices = [100 + (i % 10) for i in range(100)]  # Oscillating
-        # Add some dividends
+        # Oscillating prices with quarterly dividends
         div_dates = pd.date_range('2024-01-15', periods=3, freq='30D')
-        div_values = [2.0] * 3
-        mock_stock.history.return_value = pd.DataFrame({
-            'Close': prices
-        }, index=dates)
-        mock_stock.dividends = pd.Series(div_values, index=div_dates)
-        mock_ticker.return_value = mock_stock
+        dividends = {date.strftime('%Y-%m-%d'): 2.0 for date in div_dates}
+        mock_ticker.return_value = create_mock_stock_data(
+            [100 + (i % 10) for i in range(100)],
+            dividends=dividends,
+            start_date='2024-01-01'
+        )
 
         result = calculate_dca_core(
             ticker='TEST',
